@@ -1,12 +1,26 @@
-from functools import singledispatch
+from functools import lru_cache, singledispatch, reduce
+from wrapt import decorator
+from inspect import signature
+
+
+@lru_cache(1000)
+def get_signature_params(func):
+    return signature(func).parameters
+
+
+@decorator
+def enforce_first_arg(wrapped, instance, args, kwargs):
+    if not args:
+        parameters = get_signature_params(wrapped)
+        args = (kwargs.pop(list(parameters)[0]),)
+    return wrapped(*args, **kwargs)
 
 
 def as_factory(handler):
     """
     converter for handler to accept object or a `dict` config
     for a handler to generate an object. handlers are callable
-    (functions or types). Conceptually the hope is it feels like
-    and hopefully works well with google's fire
+    (functions or types).
     """
     @singledispatch
     def _as(obj):
@@ -45,3 +59,6 @@ def append_key_list(key, chain):
     else:
         keychain = key
     return keychain
+
+
+singledispatch = enforce_first_arg(singledispatch)
