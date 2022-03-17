@@ -1,4 +1,5 @@
-from functools import lru_cache, singledispatch, reduce
+from functools import lru_cache, reduce
+from functools import singledispatch
 from wrapt import decorator
 from inspect import signature
 
@@ -12,7 +13,13 @@ def get_signature_params(func):
 def enforce_first_arg(wrapped, instance, args, kwargs):
     if not args:
         parameters = get_signature_params(wrapped)
-        args = (kwargs.pop(list(parameters)[0]),)
+        first_arg_key = list(parameters)[0]
+        args = (kwargs[first_arg_key], )
+        kwargs = {
+            key: value
+            for key, value in kwargs.items() if key != first_arg_key
+        }
+
     return wrapped(*args, **kwargs)
 
 
@@ -22,6 +29,7 @@ def as_factory(handler):
     for a handler to generate an object. handlers are callable
     (functions or types).
     """
+
     @singledispatch
     def _as(obj):
         return obj
@@ -30,6 +38,7 @@ def as_factory(handler):
     def _as_from_conf(conf):
         obj = handler(**conf)
         return obj
+
     return _as
 
 
@@ -61,4 +70,10 @@ def append_key_list(key, chain):
     return keychain
 
 
-singledispatch = enforce_first_arg(singledispatch)
+def pop_with_default_factory(store, key_sequence, factory=dict):
+    if not key_sequence:
+        return factory()
+    value = store if hasattr(store, 'pop') else factory()
+    for key in key_sequence:
+        value = value.pop(key) if hasattr(value, 'pop') else factory()
+    return value
