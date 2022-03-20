@@ -1,11 +1,13 @@
 import attr
 import variants
 from wrapt import decorator
+from copy import deepcopy
 
 from sklearn.base import BaseEstimator, clone
 from typing import *
 from numenor.utils import find_value, replace_value, enforce_first_arg
 from functools import singledispatch
+
 
 @enforce_first_arg
 @singledispatch
@@ -15,6 +17,7 @@ def get_attribute_or_call(attribute_or_callable, obj, args, kwargs):
 @get_attribute_or_call.register(str)
 def get_attribute_or_call_(attribute_or_callable, obj, args, kwargs):
     return getattr(obj, attribute_or_callable)(*args, **kwargs)
+
 
 @enforce_first_arg
 @singledispatch
@@ -32,9 +35,9 @@ def sklearn_from_data(wrapped, instance, args, kwargs):
     if data is not None:
         X = data.features
         y = data.target
-    args, kwargs = replace_values(wrapped, args, kwargs, 'data', None)
-    args, kwargs = replace_values(wrapped, args, kwargs, 'X', X)
-    args, kwargs = replace_values(wrapped, args, kwargs, 'y', y)
+        args, kwargs = replace_value(wrapped, args, kwargs, 'data', None)
+        args, kwargs = replace_value(wrapped, args, kwargs, 'X', X)
+        args, kwargs = replace_value(wrapped, args, kwargs, 'y', y)
     return wrapped(*args, **kwargs)
 
 
@@ -47,27 +50,49 @@ class BaseTransformer(BaseEstimator):
 
 
 @variants.primary
-def parameter_search(variant, estimator, param_grid=None, search_kwargs=None, fit_params=None, **kwargs):
+def parameter_search(variant, estimator, *args,  param_grid=None, search_kwargs=None, fit_params=None, **kwargs):
     variant = variant if variant else 'base'
-    return getattr(parameter_search, variant)(estimator, **kwargs)
+    return getattr(parameter_search, variant)(estimator, *args, param_grid=param_grid, search_kwargs=search_kwargs, fit_params=fit_params, **kwargs)
 
 @parameter_search.variant('base')
-def parameter_search_base(estimator, param_grid, *args, search_kwargs=None, **fit_params):
-    return estimator.fit(*args, **kwargs)
+def parameter_search_base(estimator, *args,  fit_params=None, **kwargs):
+    fit_params = fit_params if fit_params is not None else {}
+    return estimator.fit(*args, **fit_params)
 
 @parameter_search.variant('sklearn')
-def parameter_search_sklearn(estimator, param_grid, *args, search_kwargs=None, **fit_params):
+def parameter_search_base(estimator, *args, param_grid=None, search_kwargs=None, fit_params=None, **kwargs):
     search_type = kwargs.get('search_type', 'GridSearchCV')
     search_kwargs = search_kwargs if search_kwargs is not None else {}
+    fit_params = fit_params if fit_params is not None else {}
     searcher = getattr(model_selection, search_type)(estimator, param_grid, **search_kwargs)
     return searcher.fit(*args, **fit_params)
 
 
 @attr.s(auto_attribs=True)
-class BaseTransform(BaseTransformer):
+class Transformer(BaseTransformer):
+    executor: BaseEstimator
+    parameter_optimization: Optional[Union[str, Callable]] = None
+    param_grid: Dict[str, Any] = attr.Factory(dict)
+    search_kwargs: Dict[str, Any] =  attr.Factory(dict)
+
     prediction_callback: Optional[Union[Callable, str]] = 'predict'
     transform_callback: Optional[Union[Callable, str]] = 'transform'
     decision_function_callback: Optional[Union[Callable, str]] = 'decision_function'
+
+    def _build_kwarg_payload(self, cv, param_grid_updates, search_kwarg_updates):
+        param_grid = deepcopy(self.param_grid)
+        param_grid.update(search_kwarg_updates) if search_kwarg_updates else None
+
+        search_kwargs = deepcopy(self.search_kwargs)
+        search_kwargs.update(search_kwarg_updates) if search_kwarg_updates else None
+        search_kwargs.update({'cv': cv}) if cv is not None else None
+        return param_grid, search_kwargs
+
+    @sklearn_from_data
+    def fit(self, X=None, y=None, cv=None, data=None, param_grid_updates=None, search_kwarg_updates=None, **fit_params):
+        param_grid, search_kwargs = self._build_kwarg_payload(cv, param_grid_updates, search_kwarg_updates)
+        self.estimator_ = parameter_search(self.parameter_optimization, self.executor,  X, y, param_grid=self.param_grid,search_kwargs=search_kwargs, **fit_params) 
+        return self
 
     def transform(self, X):
         return get_attribute_or_call(self.prediction_callback, self.estimator_, X)
@@ -77,20 +102,6 @@ class BaseTransform(BaseTransformer):
 
     def decision_function(self, X):
         return get_attribute_or_call(self.decision_function_callback, self.estimator_, X)
-
-
-@attr.s(auto_attribs=True)
-class Transform(BaseTransformer):
-    executor: BaseEstimator
-    parameter_optimization: Optional[Union[str, Callable]] = None
-    param_grid: Dict[str, Any] = attr.Factory(dict)
-    search_kwargs: Dict[str, Any] =  attr.Factory(dict)
-
-    @sklearn_from_data
-    def fit(self, X, y=None, cv=None, data=None, **fit_params):
-        self.search_kwargs.update({'cv': cv}) if cv is not None else None
-        self.estimator_ = parameter_search(self.parameter_optimization, estimator, self.param_grid, X, y, search_kwargs=self.search_kwargs, **fit_params) 
-        return self
 
 
 # class TransformRegressor(ClassifierMixin, BaseTransformer):

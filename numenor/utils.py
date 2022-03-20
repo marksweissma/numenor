@@ -2,9 +2,23 @@ from functools import lru_cache, reduce
 from functools import singledispatch
 from wrapt import decorator
 from inspect import signature
+import inspect
 
 
-@lru_cache(1000)
+def coalesce(*args):
+    """
+    SQL like coelesce, returns first non Falsey arg if type supports truthy / falses, otherwise compares to None
+    """
+    for arg in args:
+        try:
+            if arg:
+                return arg
+        except ValueError:
+            if arg is not None:
+                return arg
+    return args[-1]
+
+
 def get_signature_params(func):
     return signature(func).parameters
 
@@ -91,14 +105,14 @@ def find_value(func, args, kwargs, access_key, how='name'):
         index = keys.index(access_key) if how == 'name' else access_key
         defaults = [
             i.default for i in parameters.values()
-            if i.default != inspecrt._empty
+            if i.default != inspect._empty
         ]
-        offset = len(keys) - len(nvl(defaults, []))
+        offset = len(keys) - len(coalesce(defaults, []))
         default = defaults[index - offset] if index >= offset else None
         value = kwargs.get(access_key,
                            default) if index >= len(args) else args[index]
     except ValueError:
-        value = kwargs.get(accessKey, None)
+        value = kwargs.get(access_key, None)
     return value
 
 
@@ -106,16 +120,14 @@ def replace_value(func, args, kwargs, access_key, access_value):
     """
     Replace a value from a function signature
     """
-    signature = _get_signature(func)
-
-    parameters = signature.parameters
+    parameters = get_signature_params(func)
     keys = list(parameters.keys())
-    index = keys.index(accessKey)
+    index = keys.index(access_key)
 
     if index >= len(args):
-        kwargs[accessKey] = accessValue
+        kwargs[access_key] = access_value
     else:
         args = list(args)
-        args[index] = accessValue
+        args[index] = access_value
         args = tuple(args)
     return args, kwargs
