@@ -312,14 +312,16 @@ class Dataset(BaseEstimator):
             confs = self._build_children_split_confs()
         return confs
 
-    def split(self):
-        train_conf, test_conf = self.build_children_params()
-
+    def get_anchor_rest_data(self):
         if self.anchor_data_key is None:
-            anchor = self.datas[0]
-            rest = self.datas[1:]
+            anchor, rest = self.datas[0], self.datas[1:]
         else:
             anchor, rest = partition_datas(self.anchor_data_key, self.datas)
+        return anchor, rest
+
+    def split(self):
+        train_conf, test_conf = self.build_children_params()
+        anchor, rest = self.get_anchor_rest_data()
 
         generator = self.splitter.get_index_location_generator(anchor.table)
         train_index_locations, test_index_locations = next(generator)
@@ -361,3 +363,8 @@ class Dataset(BaseEstimator):
             else:
                 params[key] = value
         return params
+
+    def get_anchor_table_and_split_generator(self, n=5):
+        anchor, rest = self.get_anchor_rest_data()
+        generator = self.splitter.get_index_location_generator(anchor.table)
+        return anchor, generator

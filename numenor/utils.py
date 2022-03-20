@@ -77,3 +77,45 @@ def pop_with_default_factory(store, key_sequence, factory=dict):
     for key in key_sequence:
         value = value.pop(key) if hasattr(value, 'pop') else factory()
     return value
+
+
+def find_value(func, args, kwargs, access_key, how='name'):
+    """
+    Find a value from a function signature
+    """
+
+    parameters = get_signature_params(func)
+    keys = list(parameters.keys())
+
+    try:
+        index = keys.index(access_key) if how == 'name' else access_key
+        defaults = [
+            i.default for i in parameters.values()
+            if i.default != inspecrt._empty
+        ]
+        offset = len(keys) - len(nvl(defaults, []))
+        default = defaults[index - offset] if index >= offset else None
+        value = kwargs.get(access_key,
+                           default) if index >= len(args) else args[index]
+    except ValueError:
+        value = kwargs.get(accessKey, None)
+    return value
+
+
+def replace_value(func, args, kwargs, access_key, access_value):
+    """
+    Replace a value from a function signature
+    """
+    signature = _get_signature(func)
+
+    parameters = signature.parameters
+    keys = list(parameters.keys())
+    index = keys.index(accessKey)
+
+    if index >= len(args):
+        kwargs[accessKey] = accessValue
+    else:
+        args = list(args)
+        args[index] = accessValue
+        args = tuple(args)
+    return args, kwargs
