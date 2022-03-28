@@ -45,14 +45,13 @@ def get_key_if_series(data, key):
 @enforce_first_arg
 @singledispatch
 def extract_keys(data):
-    return list(data.keys())
+    keys = list(data.keys())
+    return keys if keys else []
 
 
 @extract_keys.register(pd.Series)
-def extract_key_seriess(data):
-    if not data.name:
-        raise Exception('cannot extract NoneType name for new data')
-    return [data.name]
+def extract_key_seriess(data, default_factory=list):
+    return [data.name] if data.name else []
 
 
 @enforce_first_arg
@@ -190,24 +189,27 @@ class Data(BaseEstimator):
         output = []
         target_key = None
         prediction_key = None
-        if features is not None:
-            output.append(features)
-        if target is not None:
-            output.append(target)
-            target_key = get_key(target)
-        if prediction is not None:
-            output.append(prediction)
-            prediction_key = get_key(prediction)
 
-        if output:
-            table = self.concat(output)
+        output.append(features) if features is not None else None
 
-        if target_key:
-            params['target_key'] = target_key
-        if prediction_key:
-            params['prediction_key'] = target_key
+        output.append(target) if target is not None else None
+        target_key = get_key(target) if target is not None else None
+
+        output.append(prediction) if prediction is not None else None
+        prediction_key = get_key(
+            prediction) if prediction is not None else None
+
+        table = self.concat(output) if output else []
+
+        params.update({'target_key': target_key}) if target_key else None
+        params.update({'prediction_key': prediction_key
+                       }) if prediction_key else None
 
         return cls.from_table(table, **params)
+
+    @property
+    def raw_index(self):
+        return self.table.index
 
     @property
     def index(self):
@@ -245,12 +247,13 @@ class Data(BaseEstimator):
         return getattr(self, method)(**params)
 
     def append_columns(self, data, location=None, **updates):
-        key = extract_keys(data)
+        keys = extract_keys(data)
+        keys = keys if keys else [location]
         params = self.get_params()
         params.update(updates)
-        if location:
-            location_key = f'{location}_key'
-            params[location_key] = append_key(key, getattr(self, location_key))
+        location_key = f'{location}_key'
+        params.update(
+            {location_key: append_key(keys, getattr(self, location_key))})
         table = self.concat([self.table, data
                              ]) if self.table is not None else data
         return self.from_table(table, **params)
@@ -312,6 +315,11 @@ class Dataset(BaseEstimator):
             confs = self._build_children_split_confs()
         return confs
 
+    @property
+    def anchor(self):
+        anchor, _ = self.get_anchor_rest_data()
+        return anchor
+
     def get_anchor_rest_data(self):
         if self.anchor_data_key is None:
             anchor, rest = self.datas[0], self.datas[1:]
@@ -319,12 +327,18 @@ class Dataset(BaseEstimator):
             anchor, rest = partition_datas(self.anchor_data_key, self.datas)
         return anchor, rest
 
-    def split(self):
-        train_conf, test_conf = self.build_children_params()
-        anchor, rest = self.get_anchor_rest_data()
+    def get_index_location_generator(self, data):
+        return self.splitter.get_index_location_generator(data.table)
 
-        generator = self.splitter.get_index_location_generator(anchor.table)
-        train_index_locations, test_index_locations = next(generator)
+    def split(self, index_location_generator=None, anchor=None):
+        anchor, _ = self.get_anchor_rest_data() if anchor is None else (anchor,
+                                                                        None)
+        index_location_generator = index_location_generator if index_location_generator is not None else self.get_index_location_generator(
+            anchor)
+
+        train_conf, test_conf = self.build_children_params()
+        train_index_locations, test_index_locations = next(
+            index_location_generator)
 
         train_indices = anchor.get_indices_from_index_location(
             train_index_locations)
@@ -348,6 +362,14 @@ class Dataset(BaseEstimator):
 
         return train_dataset, test_dataset
 
+    def split_iterator(self, index_location_generator=None, n_splits=5):
+        anchor, _ = self.get_anchor_rest_data()
+        index_location_generator = index_location_generator if index_location_generator is not None else self.get_index_location_generator(
+            anchor)
+        while n_splits:
+            n_splits -= 1
+            yield self.split(index_location_generator, anchor)
+
     def clone_with_params(self, datas, method='from_datas', **updates):
         params = self.get_params(deep=False)
         params.update(updates)
@@ -364,7 +386,7 @@ class Dataset(BaseEstimator):
                 params[key] = value
         return params
 
-    def get_anchor_table_and_split_generator(self, n=5):
+    def get_anchor_table_and_split_generator(self):
         anchor, rest = self.get_anchor_rest_data()
         generator = self.splitter.get_index_location_generator(anchor.table)
         return anchor, generator
