@@ -1,8 +1,8 @@
-import attr
+from attr import define, field, Factory
 from typing import *
 
 
-@attr.s(auto_attribs=True)
+@define
 class Metric:
     executor: Callable
     method: Optional[str] = None
@@ -11,6 +11,6 @@ class Metric:
         self.measurement = self.callable(label, prediction)
 
 
-@attr.s(auto_attribs=True)
+@define
 class Performance:
     metrics: List[Metric]

@@ -131,3 +131,48 @@ def replace_value(func, args, kwargs, access_key, access_value):
         args[index] = access_value
         args = tuple(args)
     return args, kwargs
+
+
+@enforce_first_arg
+@singledispatch
+def get_attribute_or_call(attribute_or_callable, obj, *args, **kwargs):
+    return attribute_or_callable(obj, *args, **kwargs)(*args, **kwargs)
+
+
+@get_attribute_or_call.register(str)
+def get_attribute_or_call_(attribute_or_callable, obj, *args, **kwargs):
+    return getattr(obj, attribute_or_callable)
+
+
+@enforce_first_arg
+@singledispatch
+def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
+    return key_or_callable(obj, *args, **kwargs)
+
+
+@get_from_registry_or_call.register(str)
+def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
+    return regsitry[key](*args, **kwargs)
+
+
+class Dimension(Enum):
+    OTHER = 0
+    ONE = 1
+    TWO = 2
+    THREE = 3
+
+
+@define
+class View:
+
+    @staticmethod
+    def get_dimension(shaped_array):
+        if len(shaped_array.shape) == 1:
+            dimension = Dimension.ONE
+        elif len(shaped_array.shape) == 2 and shaped_array.shape[1] == 1:
+            dimension = Dimension.TWO
+        elif len(shaped_array.shape) == 2 and shaped_array.shape[1] > 1:
+            dimension = Dimension.THREE
+        else:
+            dimension = Dimension.OTHER
+        return dimension

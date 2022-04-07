@@ -1,4 +1,4 @@
-import attr
+from attr import define, field, Factory
 
 from sklearn import model_selection as ms
 from sklearn.base import BaseEstimator
@@ -8,14 +8,15 @@ from functools import singledispatch
 from numenor.utils import as_factory, enforce_first_arg, pop_with_default_factory
 from typing import *
 from copy import deepcopy
-'''
-get_keys manages the key type
-get_key manages the data type
-'''
+
 
 GENERIC_SPLIT_FOLD_TYPE = Union[ms.KFold, ms.ShuffleSplit]
 
 
+'''
+get_keys manages the key type
+get_key manages the data type
+'''
 @enforce_first_arg
 @singledispatch
 def get_keys(keys, data):
@@ -102,10 +103,10 @@ def default_split_config():
     return config
 
 
-@attr.s(auto_attribs=True)
+@define
 class Split(BaseEstimator):
-    executor: Any = attr.ib(converter=as_factory(split_factory),
-                            default=attr.Factory(default_split_config))
+    executor: Any = field(converter=as_factory(split_factory),
+                          default=Factory(default_split_config))
     stratify_keys: Iterable = ()
     group_keys: Iterable = ()
 
@@ -167,7 +168,7 @@ def pandas_concat(output):
     return pd.concat(output, axis=1)
 
 
-@attr.s(auto_attribs=True)
+@define
 class Data(BaseEstimator):
     table: Any
     target_key: Optional[Iterable] = None
@@ -281,12 +282,12 @@ class Data(BaseEstimator):
         return getattr(self.table, key)
 
 
-@attr.s(auto_attribs=True)
+@define
 class Dataset(BaseEstimator):
-    datas: List[Data] = attr.ib(converter=dataset_enforcer)
-    splitter: Split = attr.ib(converter=as_factory(Split),
-                              default=attr.Factory(Split))
-    children: Sequence = attr.Factory(list)
+    datas: List[Data] = field(converter=dataset_enforcer)
+    splitter: Split = field(converter=as_factory(Split),
+                            default=Factory(Split))
+    children: Sequence = Factory(list)
     anchor_data_key: Union[int, str] = None
 
     @classmethod

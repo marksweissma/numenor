@@ -1,4 +1,4 @@
-import attr
+from attr import define, field, Factory
 import variants
 from wrapt import decorator
 from copy import deepcopy
@@ -6,30 +6,8 @@ from copy import deepcopy
 from sklearn.base import BaseEstimator, clone
 from sklearn import model_selection
 from typing import *
-from numenor.utils import find_value, replace_value, enforce_first_arg
+from numenor.utils import find_value, replace_value, enforce_first_arg, get_attribute_or_call
 from functools import singledispatch
-
-
-@enforce_first_arg
-@singledispatch
-def get_attribute_or_call(attribute_or_callable, obj, *args, **kwargs):
-    return attribute_or_callable(obj, *args, **kwargs)
-
-
-@get_attribute_or_call.register(str)
-def get_attribute_or_call_(attribute_or_callable, obj, *args, **kwargs):
-    return getattr(obj, attribute_or_callable)(*args, **kwargs)
-
-
-@enforce_first_arg
-@singledispatch
-def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
-    return key_or_callable(obj, *args, **kwargs)
-
-
-@get_from_registry_or_call.register(str)
-def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
-    return regsitry[key](*args, **kwargs)
 
 
 @decorator
@@ -91,12 +69,12 @@ def parameter_search_base(estimator,
     return searcher.fit(*args, **fit_params)
 
 
-@attr.s(auto_attribs=True)
+@define
 class Transformer(BaseTransformer):
     executor: BaseEstimator
     parameter_optimization: Optional[Union[str, Callable]] = None
-    param_grid: Dict[str, Any] = attr.Factory(dict)
-    search_kwargs: Dict[str, Any] = attr.Factory(dict)
+    param_grid: Dict[str, Any] = Factory(dict)
+    search_kwargs: Dict[str, Any] = Factory(dict)
 
     transform_callback: Optional[Union[Callable, str]] = 'transform'
     predict_callback: Optional[Union[Callable, str]] = 'predict'
