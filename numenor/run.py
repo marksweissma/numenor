@@ -1,28 +1,36 @@
 from attr import define, field, Factory
 import pandas as pd
-from numenor import data, estimate, measure
+from numenor import data, estimate, measure, performance, utils
 from typing import *
 from sklearn.base import clone
+import variants
+
 
 @variants.primary
-def generate_columns(variant, predictions, name='prediction' **kwargs):
+def generate_columns(variant, predictions, name='prediction', **kwargs):
     variant = variant if variant else 'base'
     return getattr(generate_columns, variant)(predictions, name, **kwargs)
 
+
 @generate_columns.variant('base')
-def generate_columns_base(predictions, name='prediction' **kwargs):
-    if 
+def generate_columns_base(predictions, name='prediction', **kwargs):
+    dimension = utils.View.get_dimension(predictions)
+
+    if dimension == utils.Dimension.VECTOR_1D:
+        columns = [name]
+    return columns
+
 
 def package_predictions(dataset,
                         transformer,
                         column_packager=None,
                         column_packager_kwargs=None,
                         **extras):
-                        ):
     column_packager_kwargs = column_packager_kwargs if column_packager_kwargs else {}
     predictions = transformer.predict(dataset.anchor.features)
     columns = generate_columns(column_packager, predictions,
                                **column_packager_kwargs)
+
     df = pd.DataFrame(index=dataset.anchor.raw_index)
     for column, constant in extras.items():
         df[column] = constant

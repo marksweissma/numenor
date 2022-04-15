@@ -53,32 +53,39 @@ class Metric:
 
 
 @singledispatch
-def _as_dict(metrics):
-    return metrics
+def _as_name(name):
+    return '__'.join(name)
 
 
-@_as_dict.register(list)
-def _as_dict_from_list(metrics):
-    return {metric.name: metric for metric in metrics}
+@_as_name.register(str)
+def _as_name_str(name):
+    return name
 
 
 @define
 class Performance:
-    metrics: List[Metric] = field(converter=_as_dict, default=Factory(list))
+    metrics: List[Metric] = Factory(list)
     evaluation_kwargs: Dict = Factory(dict)
-    group_key: str = None
+    group_keys: List[str] = Factory(list)
 
-    def evaluate(self, data):
-        return {
+    def evaluate(self, data, estimator=None):
+        evaluation = {
             metric.name: metric(data, estimator)
             for metric in self.metrics
         }
+        return evaluation
 
-    def evaluate_groups(self, data, group_key=None):
-        group_key = group_key if group_key else self.group_key
+    def evaluate_group(self, data, group_key=None):
         groups = data.groupby(group_key)
         grouped_evaluation = {
-            _key: self.evaluate(_data)
+            _as_name(_key): self.evaluate(_data)
             for _key, _data in groups
         }
         return grouped_evaluation
+
+    def evaluate_groups(self, data, group_keys=None):
+        group_keys = group_keys if group_keys else self.group_keys
+        return {
+            _as_name(group): self.evaluate_group(data, group)
+            for group in group_keys
+        }

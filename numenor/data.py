@@ -1,7 +1,6 @@
-from attr import define, field, Factory
+from attr import define, field, Factory, evolve, asdict
 
 from sklearn import model_selection as ms
-from sklearn.base import BaseEstimator
 import pandas as pd
 from functools import singledispatch
 
@@ -9,14 +8,13 @@ from numenor.utils import as_factory, enforce_first_arg, pop_with_default_factor
 from typing import *
 from copy import deepcopy
 
-
 GENERIC_SPLIT_FOLD_TYPE = Union[ms.KFold, ms.ShuffleSplit]
-
-
 '''
 get_keys manages the key type
 get_key manages the data type
 '''
+
+
 @enforce_first_arg
 @singledispatch
 def get_keys(keys, data):
@@ -104,14 +102,11 @@ def default_split_config():
 
 
 @define
-class Split(BaseEstimator):
+class Split:
     executor: Any = field(converter=as_factory(split_factory),
                           default=Factory(default_split_config))
     stratify_keys: Iterable = ()
     group_keys: Iterable = ()
-
-    def get_params(self):
-        return attr.asdict(self)
 
     def get_index_location_generator(self, anchor_data):
         stratification = anchor_data[get_keys(
@@ -169,7 +164,7 @@ def pandas_concat(output):
 
 
 @define
-class Data(BaseEstimator):
+class Data:
     table: Any
     target_key: Optional[Iterable] = None
     prediction_key: Optional[Iterable] = None
@@ -200,7 +195,8 @@ class Data(BaseEstimator):
         prediction_key = get_key(
             prediction) if prediction is not None else None
 
-        table = self.concat(output) if output else []
+        _concat = params.get('concat', pandas_concat)
+        table = _concat(output) if output else []
 
         params.update({'target_key': target_key}) if target_key else None
         params.update({'prediction_key': prediction_key
@@ -209,7 +205,7 @@ class Data(BaseEstimator):
         return cls.from_table(table, **params)
 
     @property
-    def raw_index(self):
+    def table_index(self):
         return self.table.index
 
     @property
@@ -231,33 +227,19 @@ class Data(BaseEstimator):
     def prediction(self):
         return self.table.get(self.prediction_key)
 
-    def get_params(self, deep=True, exclusions=('table')):
-        params = {}
-        for key in filter(lambda x: x not in exclusions,
-                          self._get_param_names()):
-            value = getattr(self, key)
-            if deep and hasattr(value, 'get_params'):
-                params[key] = value.get_params()
-            else:
-                params[key] = value
-        return params
-
-    def clone_with_params(self, method='from_table', **updates):
-        params = self.get_params()
-        params.update(updates)
-        return getattr(self, method)(**params)
-
     def append_columns(self, data, location=None, **updates):
         keys = extract_keys(data)
         keys = keys if keys else [location]
-        params = self.get_params()
-        params.update(updates)
-        location_key = f'{location}_key'
-        params.update(
-            {location_key: append_key(keys, getattr(self, location_key))})
+        updates = deepcopy(updates)
+
+        if location:
+            location_key = f'{location}_key'
+            updates.update(
+                {location_key: append_key(keys, getattr(self, location_key))})
+
         table = self.concat([self.table, data
                              ]) if self.table is not None else data
-        return self.from_table(table, **params)
+        return evolve(self, table=table, **updates)
 
     def get_indices_from_index_location(self, ilocs):
         indices = self[
@@ -267,23 +249,27 @@ class Data(BaseEstimator):
 
     def from_index_locations(self, ilocs, **updates):
         table = self.iloc[ilocs]
-        return self.clone_with_params(table=table, **updates)
+        return evolve(self, table=table, **updates)
 
     def from_index_locations(self, locs, **updates):
         table = self.loc[locs]
-        return self.clone_with_params(table=table, **updates)
+        return evolve(self, table=table, **updates)
 
     def from_index_values(self, index_values):
         indices = self[self.index_key].isin(
             index_values) if self.index_key else index_values
         return self.from_index_locations(index_mask)
 
+    def groupby(self, group_key):
+        return ((name, evolve(self, table=_df))
+                for name, _df in self.table.groupby(group_key))
+
     def __getattr__(self, key):
         return getattr(self.table, key)
 
 
 @define
-class Dataset(BaseEstimator):
+class Dataset:
     datas: List[Data] = field(converter=dataset_enforcer)
     splitter: Split = field(converter=as_factory(Split),
                             default=Factory(Split))
@@ -305,12 +291,18 @@ class Dataset(BaseEstimator):
             head.update({'children': None}) for head in heads
             if 'children' not in head
         ]
-        [self.get_params(deep=False).update(head) for head in heads]
+        [
+            asdict(self, recurse=False,
+                   filter=lambda x, y: x.name != 'datas').update(head)
+            for head in heads
+        ]
         return heads
 
     def build_children_params(self):
         if not self.children:
-            params = self.get_params(deep=False)
+            params = asdict(self,
+                            recurse=False,
+                            filter=lambda x, y: x.name != 'datas')
             confs = [deepcopy(params), deepcopy(params)]
         else:
             confs = self._build_children_split_confs()
@@ -358,8 +350,8 @@ class Dataset(BaseEstimator):
                     test_indices,
                     **pop_with_default_factory(test_conf, data.name)))
 
-        train_dataset = self.clone_with_params(train_data, **train_conf)
-        test_dataset = self.clone_with_params(test_data, **test_conf)
+        train_dataset = evolve(self, datas=train_data, **train_conf)
+        test_dataset = evolve(self, datas=test_data, **test_conf)
 
         return train_dataset, test_dataset
 
@@ -370,22 +362,6 @@ class Dataset(BaseEstimator):
         while n_splits:
             n_splits -= 1
             yield self.split(index_location_generator, anchor)
-
-    def clone_with_params(self, datas, method='from_datas', **updates):
-        params = self.get_params(deep=False)
-        params.update(updates)
-        return getattr(self, method)(datas, **params)
-
-    def get_params(self, deep=True, exclusions=('datas')):
-        params = {}
-        for key in filter(lambda x: x not in exclusions,
-                          self._get_param_names()):
-            value = getattr(self, key)
-            if deep and hasattr(value, 'get_params'):
-                params[key] = value.get_params()
-            else:
-                params[key] = value
-        return params
 
     def get_anchor_table_and_split_generator(self):
         anchor, rest = self.get_anchor_rest_data()

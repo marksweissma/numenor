@@ -3,6 +3,9 @@ from functools import singledispatch
 from wrapt import decorator
 from inspect import signature
 import inspect
+import numpy as np
+from enum import Enum
+from attr import define
 
 
 def coalesce(*args):
@@ -156,23 +159,38 @@ def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
 
 
 class Dimension(Enum):
-    OTHER = 0
-    ONE = 1
-    TWO = 2
-    THREE = 3
+    SCALAR = 0
+    VECTOR_1D = 1
+    VECTOR_2D = 2
+    MATRIX = 3
+    TENSOR = 4
+    OTHER = 5
 
 
 @define
 class View:
+    dimension: Dimension
+
+    @classmethod
+    def from_shape(cls, shape):
+        return cls(cls.get_dimension(shape))
 
     @staticmethod
-    def get_dimension(shaped_array):
-        if len(shaped_array.shape) == 1:
-            dimension = Dimension.ONE
-        elif len(shaped_array.shape) == 2 and shaped_array.shape[1] == 1:
-            dimension = Dimension.TWO
-        elif len(shaped_array.shape) == 2 and shaped_array.shape[1] > 1:
-            dimension = Dimension.THREE
+    def get_dimension(shape):
+        if isinstance(shape, (int, float, np.number)):
+            dimensino = Dimension.SCALAR
+        if len(shape.shape) == 1:
+            dimension = Dimension.VECTOR_1D
+        elif len(shape.shape) == 2 and shape.shape[1] == 1:
+            dimension = Dimension.VECTOR_2D
+        elif len(shape.shape) == 2 and shape.shape[1] == 2:
+            dimension = Dimension.MATRIX
+        elif len(shape.shape) > 2:
+            dimension = Dimension.TENSOR
         else:
             dimension = Dimension.OTHER
         return dimension
+
+    def is_vector(self):
+        return self.dimension in (self.Dimension.VECTOR_1D,
+                                  self.Dimension.VECTOR_2D)
