@@ -6,7 +6,7 @@ from copy import deepcopy
 from sklearn.base import BaseEstimator, clone
 from sklearn import model_selection
 from typing import *
-from numenor.utils import find_value, replace_value, enforce_first_arg, get_attribute_or_call
+from numenor.utils import find_value, replace_value, enforce_first_arg, call_from_attribute_or_callable
 from functools import singledispatch
 
 
@@ -117,23 +117,24 @@ class Transformer(BaseTransformer):
         return self
 
     def transform(self, X):
-        return get_attribute_or_call(self.transform_callback, self.estimator_,
-                                     X)
+        return call_from_attribute_or_callable(self.transform_callback,
+                                               self.estimator_, X)
 
     def predict(self, X):
-        return get_attribute_or_call(self.predict_callback, self.estimator_, X)
+        return call_from_attribute_or_callable(self.predict_callback,
+                                               self.estimator_, X)
 
     def predict_proba(self, X):
-        return get_attribute_or_call(self.predict_proba_callback,
-                                     self.estimator_, X)
+        return call_from_attribute_or_callable(self.predict_proba_callback,
+                                               self.estimator_, X)
 
     def predict_log_proba(self, X):
-        return get_attribute_or_call(self.predict_log_proba_callback,
-                                     self.estimator_, X)
+        return call_from_attribute_or_callable(self.predict_log_proba_callback,
+                                               self.estimator_, X)
 
     def decision_function(self, X):
-        return get_attribute_or_call(self.decision_function_callback,
-                                     self.estimator_, X)
+        return call_from_attribute_or_callable(self.decision_function_callback,
+                                               self.estimator_, X)
 
 
 # class TransformRegressor(ClassifierMixin, BaseTransformer):

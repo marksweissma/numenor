@@ -8,20 +8,6 @@ from enum import Enum
 from attr import define
 
 
-def coalesce(*args):
-    """
-    SQL like coelesce, returns first non Falsey arg if type supports truthy / falses, otherwise compares to None
-    """
-    for arg in args:
-        try:
-            if arg:
-                return arg
-        except ValueError:
-            if arg is not None:
-                return arg
-    return args[-1]
-
-
 def get_signature_params(func):
     return signature(func).parameters
 
@@ -96,6 +82,56 @@ def pop_with_default_factory(store, key_sequence, factory=dict):
     return value
 
 
+@enforce_first_arg
+@singledispatch
+def get_attribute_or_call(attribute_or_callable, obj, *args, **kwargs):
+    return attribute_or_callable(obj, *args, **kwargs)
+
+
+@get_attribute_or_call.register(str)
+def get_attribute_or_call_(attribute_or_callable, obj, *args, **kwargs):
+    return getattr(obj, attribute_or_callable)
+
+
+@enforce_first_arg
+@singledispatch
+def call_from_attribute_or_callable(attribute_or_callable, obj, *args,
+                                    **kwargs):
+    return attribute_or_callable(obj, *args, **kwargs)
+
+
+@call_from_attribute_or_callable.register(str)
+def call_from_attribute_or_callable_from_attribute(attribute_or_callable, obj,
+                                                   *args, **kwargs):
+
+    return getattr(obj, attribute_or_callable)(*args, **kwargs)
+
+
+@enforce_first_arg
+@singledispatch
+def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
+    return key_or_callable(obj, *args, **kwargs)
+
+
+@get_from_registry_or_call.register(str)
+def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
+    return regsitry[key](*args, **kwargs)
+
+
+def coalesce(*args):
+    """
+    SQL like coelesce, returns first non Falsey arg if type supports truthy / falses, otherwise compares to None
+    """
+    for arg in args:
+        try:
+            if arg:
+                return arg
+        except ValueError:
+            if arg is not None:
+                return arg
+    return args[-1]
+
+
 def find_value(func, args, kwargs, access_key, how='name'):
     """
     Find a value from a function signature
@@ -134,63 +170,3 @@ def replace_value(func, args, kwargs, access_key, access_value):
         args[index] = access_value
         args = tuple(args)
     return args, kwargs
-
-
-@enforce_first_arg
-@singledispatch
-def get_attribute_or_call(attribute_or_callable, obj, *args, **kwargs):
-    return attribute_or_callable(obj, *args, **kwargs)(*args, **kwargs)
-
-
-@get_attribute_or_call.register(str)
-def get_attribute_or_call_(attribute_or_callable, obj, *args, **kwargs):
-    return getattr(obj, attribute_or_callable)
-
-
-@enforce_first_arg
-@singledispatch
-def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
-    return key_or_callable(obj, *args, **kwargs)
-
-
-@get_from_registry_or_call.register(str)
-def get_from_registry_or_call(key_or_callable, registry, *args, **kwargs):
-    return regsitry[key](*args, **kwargs)
-
-
-class Dimension(Enum):
-    SCALAR = 0
-    VECTOR_1D = 1
-    VECTOR_2D = 2
-    MATRIX = 3
-    TENSOR = 4
-    OTHER = 5
-
-
-@define
-class View:
-    dimension: Dimension
-
-    @classmethod
-    def from_shape(cls, shape):
-        return cls(cls.get_dimension(shape))
-
-    @staticmethod
-    def get_dimension(shape):
-        if isinstance(shape, (int, float, np.number)):
-            dimensino = Dimension.SCALAR
-        if len(shape.shape) == 1:
-            dimension = Dimension.VECTOR_1D
-        elif len(shape.shape) == 2 and shape.shape[1] == 1:
-            dimension = Dimension.VECTOR_2D
-        elif len(shape.shape) == 2 and shape.shape[1] == 2:
-            dimension = Dimension.MATRIX
-        elif len(shape.shape) > 2:
-            dimension = Dimension.TENSOR
-        else:
-            dimension = Dimension.OTHER
-        return dimension
-
-    def is_vector(self):
-        return self.dimension in (self.Dimension.VECTOR_1D,
-                                  self.Dimension.VECTOR_2D)

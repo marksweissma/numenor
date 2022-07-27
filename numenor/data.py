@@ -1,12 +1,14 @@
 from attr import define, field, Factory, evolve, asdict
+from itertools import chain
 
 from sklearn import model_selection as ms
 import pandas as pd
-from functools import singledispatch
+from functools import singledispatch, reduce
 
 from numenor.utils import as_factory, enforce_first_arg, pop_with_default_factory
 from typing import *
 from copy import deepcopy
+from collections.abc import Iterable
 
 GENERIC_SPLIT_FOLD_TYPE = Union[ms.KFold, ms.ShuffleSplit]
 '''
@@ -49,23 +51,23 @@ def extract_keys(data):
 
 
 @extract_keys.register(pd.Series)
-def extract_key_seriess(data, default_factory=list):
+def extract_key_series(data, default_factory=list):
     return [data.name] if data.name else []
 
 
 @enforce_first_arg
 @singledispatch
-def append_key(chain, key):
+def chain_enforce_list(chain, key):
     return chain + [key]
 
 
-@append_key.register(str)
-def append_key_str(chain, key):
+@chain_enforce_list.register(str)
+def chain_enforce_list_str(chain, key):
     return [chain] + [key]
 
 
-@append_key.register(type(None))
-def append_key_str(chain, key):
+@chain_enforce_list.register(type(None))
+def chain_enforce_list_str(chain, key):
     return [key]
 
 
@@ -163,14 +165,20 @@ def pandas_concat(output):
     return pd.concat(output, axis=1)
 
 
+def prefix_expand(key, table):
+    return [column for column in table if str(column).startswith(str(key))]
+
+
 @define
 class Data:
     table: Any
-    target_key: Optional[Iterable] = None
-    prediction_key: Optional[Iterable] = None
+    target_keys: Optional[Iterable] = None
+    prediction_keys: Optional[Iterable] = None
     index_key: Optional[Iterable] = None
+    metadata_keys: Optional[Iterable] = None
     concat: Optional[Callable] = pandas_concat
     name: Optional[Union[str, int]] = None
+    expand: Callable = prefix_expand
 
     @classmethod
     def from_table(cls, table, **params):
@@ -181,26 +189,31 @@ class Data:
                         features=None,
                         target=None,
                         prediction=None,
+                        metadata=None,
                         **params):
         output = []
-        target_key = None
-        prediction_key = None
+        target_keys = None
+        metadata_keys = None
+        prediction_keys = None
 
-        output.append(features) if features is not None else None
+        def append_output_and_get(block):
+            output.append(block) if block is not None else None
+            return get_key(block) if block is not None else None
 
-        output.append(target) if target is not None else None
-        target_key = get_key(target) if target is not None else None
+        _ = append_output_and_get_block(features)
 
-        output.append(prediction) if prediction is not None else None
-        prediction_key = get_key(
-            prediction) if prediction is not None else None
+        target_keys = append_output_and_get_block(target)
+        metadata_keys = append_output_and_get_block(metadata)
+        prediction_keys = append_output_and_get_block(prediction)
 
         _concat = params.get('concat', pandas_concat)
         table = _concat(output) if output else []
 
-        params.update({'target_key': target_key}) if target_key else None
-        params.update({'prediction_key': prediction_key
-                       }) if prediction_key else None
+        params.update({'target_keys': target_keys}) if target_keys else None
+        params.update({'metadata_keys': metadata_keys
+                       }) if metadata_keys else None
+        params.update({'prediction_keys': prediction_keys
+                       }) if prediction_keys else None
 
         return cls.from_table(table, **params)
 
@@ -211,21 +224,40 @@ class Data:
     @property
     def index(self):
         return self.table[
-            self.index_key] if self.index_key else self.table.index
+            self.index_key] if self.index_key else self.table_index
+
+    @property
+    def non_feature_keysets(self):
+        keysets = reduce(lambda x, y: chain_enforce_list(x, y), [None] + [
+            self.target_keys, self.prediction_keys, self.metadata_keys,
+            self.index_key
+        ])
+        print(keysets)
+        return [keyset for keyset in keysets if keyset]
+
+    @property
+    def feature_keys(self):
+        exclusions = list(
+            chain.from_iterable(
+                self.expand(keys, self.table)
+                for keys in self.non_feature_keysets))
+        return [column for column in self.table if column not in exclusions]
 
     @property
     def features(self):
-        exclusions = append_key(self.target_key, self.prediction_key)
-        columns = [i for i in self.table if i not in exclusions]
-        return self.table.get(columns)
+        return self.table.get(self.feature_keys)
 
     @property
     def target(self):
-        return self.table.get(self.target_key)
+        return self.table.get(self.target_keys)
+
+    @property
+    def metadata(self):
+        return self.table.get(self.metadata_keys)
 
     @property
     def prediction(self):
-        return self.table.get(self.prediction_key)
+        return self.table.get(self.prediction_keys)
 
     def append_columns(self, data, location=None, **updates):
         keys = extract_keys(data)
@@ -234,8 +266,10 @@ class Data:
 
         if location:
             location_key = f'{location}_key'
-            updates.update(
-                {location_key: append_key(keys, getattr(self, location_key))})
+            updates.update({
+                location_key:
+                chain_enforce_list(keys, getattr(self, location_key))
+            })
 
         table = self.concat([self.table, data
                              ]) if self.table is not None else data

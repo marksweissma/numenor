@@ -31,7 +31,9 @@ def package_predictions(dataset,
     columns = generate_columns(column_packager, predictions,
                                **column_packager_kwargs)
 
-    df = pd.DataFrame(index=dataset.anchor.raw_index)
+    df = pd.DataFrame(predictions,
+                      index=dataset.anchor.table_index,
+                      columns=columns)
     for column, constant in extras.items():
         df[column] = constant
     return df
@@ -58,15 +60,22 @@ class Run:
         self.train(train_dataset)
         return self.evaluate(test_dataset)
 
-    def evaluate_cross_val(self, dataset=None):
+    def evaluate_cross_val(self, dataset=None, store_transformers=True):
         dataset = dataset if dataset is not None else self.dataset
         predictions = []
-        for train_dataset, test_dataset in dataset.split_iterator():
+        if store_transformers:
+            self.transformers = {}
+        for fold, (train_dataset,
+                   test_dataset) in enumerate(dataset.split_iterator()):
             transformer = clone(self.transformer)
             transformer.fit(data=train_dataset.anchor)
-            predictions.append(package_predictions(test_dataset, transformer))
-        return dataset.anchor.append_columns(pd.concat(predictions),
-                                             'prediction')
+            predictions.append(
+                package_predictions(test_dataset, transformer, fold=fold))
+        predictions_df = pd.concat(predictions)
+        temp_ds = dataset.anchor.append_columns(
+            predictions_df.drop('fold', axis=1), 'prediction')
+        temp_ds = temp_ds.append_columns(predictions_df[['fold']], 'metadata')
+        return temp_ds
 
     def evaluate(self, dataset=None):
         dataset = self.dataset if dataset is None else dataset
