@@ -14,11 +14,10 @@ with an automated pydantic Model for valiating the request
 
 ### patterns
 
-1. One of the core tenants is separation of `IO <> configuration <> Execution`
+1. One of the core tenants is separation of `IO <> Configuration <> Execution`
 as a result numenor attempts to enable configuration with a focus on development speed.
-This pattern appears often through the use of the `as_factory` utility. `as_factory` uses type inference to decide if it should pass through its argument at runtime, or 
-dispatch out to a _handler_ and return the result. What does that look like in practice
-
+This pattern appears often through the use of the `as_factory` utility. `as_factory` uses type inference to decide whether to pass the argument through at runtime or pass the argument(s) 
+to a _handler_ and return the result of the handler. What does that look like in practice
 ```python
 @define
 class Config:
@@ -35,17 +34,15 @@ second_config = load_config(Config('a', 'b'))
 ```
 `first_config` and `second_config` are equivalent. While we could offload the dict unpacking
 to a classmethod, we then need to maintain the logic to handle the types and offloading.
-With `as_factory` we get the expected behavior of "if it's the object we want, pass it through, if not
-create it" this is most commonly used with `attrs` `fields` via converters but is used with default
-among other applications. What this unblocks, is the ability to pass nested configuration down through
-dependencies and enable dependency injection where parameters are specified by configuration, without 
-writing that code, especially that does not live with the owning object or add more overhead and/or routes
-to instantiation.
+With `as_factory` we get the expected behavior of "if it's the object we want, pass it through, if not create it" this is most commonly used with `attrs` `fields` via `converters` 
+What this pattern unblocks is the ability to pass nested configuration down through
+dependencies while also enabling the same interfaces to accept the objects themselves without 
+writing or maintaing the code.
 
 
-2. Dispatch by value. Dispatch by type is used, and support for type based dispatching is now supported in
-standard lib :yay:. Dispatch by value is less elegant, but enables clean solution that allow users to interact
-with core and modules and extend them without ever touching them. Dispatch by value is built on the `variants` package. A lightweight wrapper that allows functions maintain variants that can be invoked explicitly as an attribute.
+2. Dispatch by value. 
+ Dispatch by value enables a user to interact
+with core code and modules. Extend them without ever leaving their development area. Dispatch by value is built on the `variants` package. A lightweight wrapper that allows functions to maintain _variants_ that can be invoked explicitly as an attribute.
 
 ```python
 import variants
@@ -60,7 +57,7 @@ the variant can be specified by configuration and if a user wants to extend func
 ... elsewhere ..
 
 ```python
-@function.variant('my_experiemnt')
+@function.variant('my_experiment')
 def function(*args, **kwargs):
     return 'my_experiment'
 
