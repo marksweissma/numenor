@@ -5,13 +5,12 @@ This project is in active development - quick start & pip installable wheel avai
 numenor is an SDK for managing and improving ML training workflows.
 Components are designed to be extensible and composeable enabling independent
 integration, testing and development - not a DSL. Getting the most out of the framwork
-does require buying into it's basic tenants and structures, but does not block using it
-for feature or prediction selection or management or the wrapper around
-sklearn's pipeline so it supports applying transform to validation data
-enabling early stopping with preprocessing for xgboost and row-based resampling. Likewise,
-the `Schema` transformer enables no more required code to stand up a FastAPI app
-with an automated pydantic Model for valiating the rqeuest, but can be used in a pure
-sklearn workflow.
+does require buying into its basic tenants and structures, but does not block usage such as
+
+1. Independent configurable column and row based data management 
+2. The wrapper around sklearn's pipeline enabling applying transforms to validation data for early stopping (xgboost) or row-based resampling(i.e SMOTE).
+3. A `Schema` transformer enabling no additional code to stand up a FastAPI app
+with an automated pydantic Model for valiating the request
 
 ### patterns
 
