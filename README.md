@@ -30,7 +30,7 @@ class Config:
 def load_config(config: Union[Dict[str, str], Config]) -> Config:
     return as_factory(Config)(config)
 
-first_config = load_config{'an_arg': 'a', 'another_arg': b})
+first_config = load_config({'an_arg': 'a', 'another_arg': 'b'})
 second_config = load_config(Config('a', 'b'))
 
 ```
