@@ -10,7 +10,7 @@ does require buying into its basic tenants and structures, but does not block us
 1. Independent configurable column and row based data management 
 2. The wrapper around sklearn's pipeline enabling applying transforms to validation data for early stopping (xgboost) or row-based resampling(i.e SMOTE).
 3. A `Schema` transformer enabling no additional code to stand up a FastAPI app
-with an automated pydantic Model for valiating the request
+with an automated pydantic Model for validating the request
 
 ## Patterns
 
