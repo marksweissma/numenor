@@ -1,17 +1,17 @@
 from sklearn import datasets
+from sklearn.cluster import KMeans
 from sklearn.linear_model import Lasso, LogisticRegression
+from sklearn.metrics import r2_score, mean_absolute_error, roc_auc_score, average_precision_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import make_pipeline
-from sklearn.metrics import r2_score, mean_absolute_error, roc_auc_score, average_precision_score
 from xgboost import XGBClassifier, XGBRegressor
 
-from matplotlib import pyplot as plt
-import variants
-import pandas as pd
-
-import structlog
 from functools import lru_cache
+from matplotlib import pyplot as plt
+import pandas as pd
+import structlog
+import variants
 
 from numenor import data, estimate
 from numenor.pipeline import (make_pipeline_xgb_resample,
@@ -78,12 +78,13 @@ def regression_example():
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, random_state=RANDOM_STATE)
 
-    # Yes, scaling -> trees isn't "correct" but this is for illustration purposes
     # Using numnenor's pipeline wrapper enables support for preprocessing transformers
     # and samplers before fitting without hacks / boilerplate / duplication
     model = make_pipeline_xgb_resample(
         RobustScaler(),
-        XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3))
+        KMeans(n_clusters=3),
+        XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3),
+    )
 
     # split training data into "fitting" and "validating" for early stopping
     X_train_fit, X_train_validate, X_train_fit, y_train_validate = train_test_split(
@@ -186,7 +187,9 @@ def regression_example():
 
     model = make_pipeline_xgb_resample(
         RobustScaler(),
-        XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3))
+        KMeans(n_clusters=3),
+        XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3),
+    )
 
     train_dataset, test_dataset = full_dataset.split()
     train_dataset_fitting, train_dataset_validating = train_dataset.split()
