@@ -1,23 +1,41 @@
 from __future__ import annotations
+
+from functools import singledispatch
+from typing import *
+
+import variants
+from attrs import define, field
+from sklearn.base import BaseEstimator
 from sklearn.pipeline import Pipeline, _final_estimator_has, _name_estimators
 from sklearn.utils import _print_elapsed_time
 from sklearn.utils.metaestimators import available_if
-from sklearn.base import BaseEstimator
-from typing import *
-from attrs import define, field
-
-from functools import singledispatch
 
 
-def package_terminal_estimator_params(
+@singledispatch
+def _access(accessor, steps):
+    name, transform = steps[accessor]
+    return name, transform, accessor
+
+
+@_access.register(list)
+def _access_list(accessor, steps):
+    head, tail = accessor[0], accessor[1:]
+    name, transform = steps[head]
+    return name, transform, tail if tail else head
+
+
+def package_params(
     pipeline: Pipeline,
     params: Dict,
-    instance_check: Callable = lambda x: hasattr(x, 'steps')
+    accessor: Hashable = -1,
+    instance_check: Callable = lambda x: isinstance(x, Pipeline)
 ) -> Dict:
-    name, transform = pipeline.steps[-1]
+    name, transform, accessor = _access(accessor, pipeline.steps)
     if instance_check(transform):
-        packaged_params = package_terminal_estimator_params(
-            transform, params, instance_check)
+        packaged_params = package_params(transform,
+                                         params,
+                                         accessor=accessor,
+                                         instance_check=instance_check)
         updated_params = {
             f'{name}__{key}': value
             for key, value in packaged_params.items()
@@ -30,25 +48,48 @@ def package_terminal_estimator_params(
     return updated_params
 
 
-def transform_xgb_eval_set_if_in_fit_params(pipeline: Pipeline,
-                                            **fit_params: Dict) -> Dict:
-    if 'eval_set' in fit_params:
+@variants.primary
+def transform_fit_params(variant: str = 'key',
+                         pipeline: Pipeline = None,
+                         key: Hashable = 'eval_set',
+                         fit_params: Dict = None,
+                         **kwargs) -> Dict:
+    return getattr(transform_fit_params, variant)(pipeline=pipeline,
+                                                  key=key,
+                                                  fit_params=fit_params,
+                                                  **kwargs)
+
+
+@transform_fit_params.variant('base')
+def transform_fit_params_base(pipeline, fit_params, **kwargs) -> Dict:
+    return fit_params
+
+
+@transform_fit_params.variant('key')
+def transform_fit_params_key(pipeline, key, fit_params, **kwargs) -> Dict:
+    if key in fit_params:
         transformed_eval_sets = []
-        for X, y in fit_params['eval_set']:
+        for X, y in fit_params[key]:
             Xt = X  # sklearn convention
             for _, name, transform in pipeline._iter(with_final=False):
                 Xt = transform.transform(Xt)
             transformed_eval_sets.append((Xt, y))
-        fit_params['eval_set'] = transformed_eval_sets
+        fit_params[key] = transformed_eval_sets
     return fit_params
 
 
-class PipelineXGBResample(Pipeline):
+class Pipeline(Pipeline):
 
-    def __init__(self, steps, memory=None, verbose=False, sampler=None):
+    def __init__(self,
+                 steps,
+                 memory=None,
+                 verbose=False,
+                 sampler=None,
+                 fit_params_variant='key'):
         if sampler is not None and not hasattr(sampler, 'fit_resample'):
             raise TypeError(f'sampler: {sampler} is not a valid resampler')
         self.sampler = sampler
+        self.fit_params_variant = fit_params_variant
         super().__init__(steps, memory=memory, verbose=verbose)
 
     def fit(self, X, y=None, **fit_params) -> PipelineXGBResample:
@@ -61,8 +102,10 @@ class PipelineXGBResample(Pipeline):
                                  self._log_message(len(self.steps) - 1)):
             if self._final_estimator != "passthrough":
                 fit_params_last_step = fit_params_steps[self.steps[-1][0]]
-                fit_params_last_step = transform_xgb_eval_set_if_in_fit_params(
-                    self, **fit_params_last_step)
+                fit_params_last_step = transform_fit_params(
+                    variant=self.fit_params_variant,
+                    pipeline=self,
+                    fit_params=fit_params_last_step)
                 self._final_estimator.fit(Xt, y, **fit_params_last_step)
 
         return self
@@ -79,8 +122,11 @@ class PipelineXGBResample(Pipeline):
             if last_step == "passthrough":
                 return Xt
             fit_params_last_step = fit_params_steps[self.steps[-1][0]]
-            fit_params_last_step = transform_xgb_eval_set_if_in_fit_params(
-                self, fit_params_last_step)
+
+            fit_params_last_step = transform_fit_params(
+                variant=self.fit_params_variant,
+                pipeline=self,
+                fit_params=fit_params_last_step)
             if hasattr(last_step, "fit_transform"):
                 return last_step.fit_transform(Xt, y, **fit_params_last_step)
             else:
@@ -97,18 +143,21 @@ class PipelineXGBResample(Pipeline):
         fit_params_last_step = fit_params_steps[self.steps[-1][0]]
         with _print_elapsed_time("Pipeline",
                                  self._log_message(len(self.steps) - 1)):
-            fit_params_last_step = transform_xgb_eval_set_if_in_fit_params(
-                self, fit_params_last_step)
-            y_pred = self.steps[-1][1].fit_predict(Xt, y,
-                                                   **fit_params_last_step)
+            fit_params_last_step = transform_fit_params(
+                variant=self.fit_params_variant,
+                pipeline=self,
+                fit_params=fit_params_last_step)
+            y_pred = self[-1].fit_predict(Xt, y, **fit_params_last_step)
         return y_pred
 
 
-def make_pipeline_xgb_resample(*steps,
-                               memory=None,
-                               verbose=False,
-                               sampler=None) -> PipelineXGBResample:
-    return PipelineXGBResample(_name_estimators(steps),
-                               memory=memory,
-                               verbose=verbose,
-                               sampler=sampler)
+def make_pipeline(*steps,
+                  memory=None,
+                  verbose=False,
+                  sampler=None,
+                  fit_params_variant='key') -> Pipeline:
+    return Pipeline(_name_estimators(steps),
+                    memory=memory,
+                    verbose=verbose,
+                    sampler=sampler,
+                    fit_params_variant=fit_params_variant)

@@ -14,8 +14,7 @@ import structlog
 import variants
 
 from numenor import data, estimate
-from numenor.pipeline import (make_pipeline_xgb_resample,
-                              package_terminal_estimator_params)
+from numenor.pipeline import make_pipeline, package_params
 
 LOG = structlog.get_logger()
 RANDOM_STATE = 42
@@ -80,7 +79,7 @@ def regression_example():
 
     # Using numnenor's pipeline wrapper enables support for preprocessing transformers
     # and samplers before fitting without hacks / boilerplate / duplication
-    model = make_pipeline_xgb_resample(
+    model = make_pipeline(
         RobustScaler(),
         KMeans(n_clusters=3),
         XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3),
@@ -185,7 +184,7 @@ def regression_example():
                                             features=X,
                                             target=y)
 
-    model = make_pipeline_xgb_resample(
+    model = make_pipeline(
         RobustScaler(),
         KMeans(n_clusters=3),
         XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3),
@@ -194,7 +193,7 @@ def regression_example():
     train_dataset, test_dataset = full_dataset.split()
     train_dataset_fitting, train_dataset_validating = train_dataset.split()
 
-    fit_params = package_terminal_estimator_params(
+    fit_params = package_params(
         model, {
             'early_stopping_rounds':
             5,

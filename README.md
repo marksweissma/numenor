@@ -7,7 +7,7 @@ Components are designed to be extensible and composeable enabling independent
 integration, testing and development - not a DSL. Getting the most out of the framwork
 does require buying into its basic tenants and structures, but does not block usage such as
 
-1. Independent configurable column and row based data management 
+1. Independent configurable column and row based data management
 2. The wrapper around sklearn's pipeline enabling applying transforms to validation data for early stopping (xgboost) or row-based resampling(i.e SMOTE).
 3. A `Schema` transformer enabling no additional code to stand up a FastAPI app
 with an automated pydantic Model for validating the request
@@ -17,7 +17,7 @@ with an automated pydantic Model for validating the request
 ### Dispatch by type
 One of the core tenants is separation of `IO <> Configuration <> Execution`
 as a result numenor attempts to enable configuration with a focus on development speed.
-This pattern appears often through the use of the `as_factory` utility. `as_factory` uses type inference to decide whether to pass the argument through at runtime or pass the argument(s) 
+This pattern appears often through the use of the `as_factory` utility. `as_factory` uses type inference to decide whether to pass the argument through at runtime or pass the argument(s)
 to a _handler_ and return the result of the handler. What does that look like in practice
 ```python
 @define
@@ -38,13 +38,13 @@ assert second_config == Config(an_arg='a', another_arg='b')
 ```
 While we could offload the dict unpacking
 to a classmethod, we then need to maintain the logic to handle the types and offloading.
-With `as_factory` we get the expected behavior of "if it's the object we want, pass it through, if not create it" this is most commonly used with `attrs` `fields` via `converters` 
+With `as_factory` we get the expected behavior of "if it's the object we want, pass it through, if not create it" this is most commonly used with `attrs` `fields` via `converters`
 What this pattern unblocks is the ability to pass nested configuration down through
-dependencies while also enabling the same interfaces to accept the objects themselves without 
+dependencies while also enabling the same interfaces to accept the objects themselves without
 writing or maintaing the code.
 
 ### Dispatch by value
-Dispatch by value enables users to drive workflows from configuration. 
+Dispatch by value enables users to drive workflows from configuration.
 In addition, a user can interact
 with core code and modules, extend them without ever leaving their development area. Dispatch by value is built on the `variants` package. A lightweight wrapper that allows functions to maintain _variants_ that can be invoked explicitly as an attribute.
 
@@ -73,28 +73,30 @@ assert 'my_experiment' == function('my_experiment')
 
 ### without-config
 
-In this example we'll walk through incorporating elements of a typical sklearn 
+In this example we'll walk through incorporating elements of a typical sklearn
 workflow with components from numenor
 
 #### Boilerplate
 
 ```python
 from sklearn import datasets
+from sklearn.cluster import KMeans
 from sklearn.linear_model import Lasso, LogisticRegression
+from sklearn.metrics import r2_score, mean_absolute_error, roc_auc_score, average_precision_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
 from sklearn.pipeline import make_pipeline
-from sklearn.metrics import r2_score, mean_absolute_error, roc_auc_score, average_precision_score
 from xgboost import XGBClassifier, XGBRegressor
 
 from functools import lru_cache
+from matplotlib import pyplot as plt
 import pandas as pd
 import structlog
 import variants
 
 from numenor import data, estimate
-from numenor.pipeline import (make_pipeline_xgb_resample,
-                              package_terminal_estimator_params)
+from numenor.pipeline import make_pipeline, package_params
+
 
 LOG = structlog.get_logger()
 RANDOM_STATE = 42
@@ -178,9 +180,9 @@ def regression_example():
 While xgboost provides an interface for sklearn - the way it handles
 early stopping prevents transforms from being applied to early stopping and
 metric evaluation datasets. A core "feature"  of sklearn pipeline's has always
-been the inability to mutate rows - whether that's outlier removal 
+been the inability to mutate rows - whether that's outlier removal
 or upsamling in the pipeline. The numenor helpers `PipelineXGBResample`
-and `make_pipeline_xgb_resample` in `numenor.pipeline` solve this issue.
+and `make_pipeline` in `numenor.pipeline` solve this issue.
 Transforms before the terminal estimator in the pipeline will be applied
 to the `eval_set`s. In addition, a _sampler_ with the interface specified
 by `imbalanced-learn` can be specified - it is called during fit between
@@ -200,7 +202,7 @@ def regression_example():
 
     # Using numnenor's pipeline wrapper enables support for preprocessing transformers
     # and samplers before fitting without hacks / boilerplate / duplication
-    model = make_pipeline_xgb_resample(
+    model = make_pipeline(
         RobustScaler(),
         KMeans(n_clusters=3),
         XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3),
@@ -236,7 +238,7 @@ without additional information and **separate** column management from row manag
 1. `numenor.data.Dataset` owns `nuemnor.data.Data` objects and maintains `numenor.data.Split` objects which control _row_ based management. `Dataset` objects also own child configuration (more on this later - i.e first split by time (9 months train and 3 months evaluation - then within train use stratified sampling to optimize parameters)
 
 2. `numenor.data.Data` owns the direct reference to the underling data (DataFrame, array etc.) and manages column based selection (feautres, target, metadata, prediction, index)
-    
+
 
 
 More on data abstractions and getting leverage out of workflows in the User Guide,
@@ -283,6 +285,10 @@ def regression_example():
 
 
 ```
+Here the keys and shapes  associated with features, target and metadata are inferred
+from the inputs of the classmethod
+
+Alternatively you can explicitly specify what keys belong to which groups of a table
 
 ```python
 
@@ -297,8 +303,8 @@ def regression_example():
     table = pd.concat([X, y, metadata], axis=1)
 
     full_data = data.Data(table,
-                          target_column='label',
-                          metadata_column='metadata')
+                          target_column='label',  # -> target will be a series
+                          metadata_column=['metadata'])  # -> metadata will be a df
 
     model = make_pipeline(RobustScaler(), Lasso())
     model.fit(full_data.features, full_data.target)
@@ -306,12 +312,27 @@ def regression_example():
     LOG.msg('Features', features=full_data.feature_keys)
     LOG.msg('metadata',
             metadata={
-                'name': full_data.metadata.name,
+                'name': full_data.metadata.columns,
                 'type': full_data.metadata.__class__
             })
 
 ```
 
+Data objects maintain their columns (key selector) and are decoupled
+from row-wise configuration which is defined through _splitting_
+
+`numenor.data.Split` objets wrap `sklearn` `Splitter`s and `KFolder`s
+they enable declarative definition of stratification, groups and
+explicit setting of chained (children) datasets. For example,
+
+1. split train, test based on time (i.e. 6 months train, 2 months test)
+2. split train into fitting and validation for hyperparameter optimzation based on stratification of the target class. If children configurations are not specified
+children inherit the configuration their parent. Children can be set up as levels
+(i.e. all children will have this config, or as branches train has conf1, test has conf2)
+
+
+Here we will not mutate the config for the children and illustrate defaulting
+to a `ShuffleSplit`
 
 ```python
 
@@ -338,6 +359,8 @@ def regression_example():
                                                     predictions))
 ```
 
+Automated splitting enables automated early stopping with a controllable shape
+
 ```python
 @regression_example.variant('dataset__early_stopping')
 def regression_example():
@@ -348,7 +371,7 @@ def regression_example():
                                             features=X,
                                             target=y)
 
-    model = make_pipeline_xgb_resample(
+    model = make_pipeline(
         RobustScaler(),
         KMeans(n_clusters=3),
         XGBRegressor(n_estimators=1000, max_depth=5, learning_rate=.3),
@@ -357,7 +380,7 @@ def regression_example():
     train_dataset, test_dataset = full_dataset.split()
     train_dataset_fitting, train_dataset_validating = train_dataset.split()
 
-    fit_params = package_terminal_estimator_params(
+    fit_params = package_params(
         model, {
             'early_stopping_rounds':
             5,
