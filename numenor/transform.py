@@ -37,39 +37,38 @@ class BaseTransformer(TransformerMixin, BaseEstimator):
 
 
 @variants.primary
-def include(variant, df, **kwargs):
-    return getattr(include, variant)(df, **kwargs)
+def select_include(variant, df, **kwargs):
+    return getattr(select_include, variant)(df, **kwargs)
 
 
-@include.variant('by_key')
-def include_by_key(df, include=None, **kwargs):
+@select_include.variant('by_key')
+def select_include_by_key(df, include=None, **kwargs):
     keys = [i for i in df if i in include] if include is not None else list(df)
     return keys
 
 
-@include.variant('by_dtype')
-def include_by_key(df, use_head=True, **kwargs):
+@select_include.variant('by_dtype')
+def select_include_by_key(df, use_head=True, **kwargs):
     selected = (df.head() if use_head else df).select_dtypes(**kwargs)
     keys = [i for i in df if i in selected]
     return keys
 
 
 @variants.primary
-def exclude(variant, df, exclude, **kwargs):
-    return getattr(exclude, variant)(df, exclude, **kwargs)
+def select_exclude(variant, df, **kwargs):
+    return getattr(select_exclude, variant)(df, **kwargs)
 
 
-@exclude.variant('by_key')
-def exclude_by_key(df, exclude, **kwargs):
+@select_exclude.variant('by_key')
+def select_exclude_by_key(df, exclude, **kwargs):
     keys = [i for i in df if i not in exclude]
     return keys
 
 
-@exclude.variant('by_dtype')
-def exclude_by_key(df, use_head=True, **kwargs):
-    if use_head:
-        df = df.head()
-    keys = [i for i in df if i not in list(df.select_dtypes(**kwargs))]
+@select_exclude.variant('by_dtype')
+def select_exclude_by_key(df, use_head=True, **kwargs):
+    selected = (df.head() if use_head else df).select_dtypes(**kwargs)
+    keys = [i for i in df if i not in selected]
     return keys
 
 
@@ -83,14 +82,12 @@ class Select:
             includes = list(df)
         else:
             includes = list(
-                itertools.chain(*(
-                    include(inclusion, df, **kwargs)
-                    for inclusion, kwargs in self.include.items())))
+                itertools.chain(*(select_include(method, df, **kwargs)
+                                  for method, kwargs in self.include.items())))
         if self.exclude:
-            excludes = set(
-                itertools.chain(*(
-                    exclude(exclusion, df, **kwargs)
-                    for exclusion, kwargs in self.exclude.items())))
+            exclusions = (select_exclude(method, df, **kwargs)
+                          for method, kwargs in self.exclude.items())
+            excludes = set(itertools.chain(*(i for i in exclusions if i)))
         else:
             excludes = set()
         keys = [i for i in includes if i not in excludes]
