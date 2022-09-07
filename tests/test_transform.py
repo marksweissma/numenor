@@ -46,13 +46,13 @@ def df(_df, color, block):
     return pd.concat([_df, color, block], axis=1)
 
 
-def test_select(df):
-    selector = t.Select(include={'by_key': {'include': ['a']}})
-    selector(df).equals(df[['a']])
+def test_include(df):
+    selector = t.Select()
+    selector(df).equals(df)
     assert isinstance(selector(df), pd.DataFrame)
 
-    selector = t.Select(include={'by_key': {'exclusions': ['a']}})
-    selector(df).equals(df.drop('a', axis=1))
+    selector = t.Select(include={'by_key': {'include': ['a']}})
+    selector(df).equals(df[['a']])
     assert isinstance(selector(df), pd.DataFrame)
 
     selector = t.Select(include={'by_dtype': {'include': ['object']}})
@@ -60,3 +60,29 @@ def test_select(df):
 
     selector = t.Select(include={'by_dtype': {'include': ['number']}})
     assert selector(df).equals(df.drop('color', axis=1))
+
+
+def test_exclude(df):
+    selector = t.Select(exclude={'by_key': {'exclude': ['a']}})
+    selector(df).equals(df.drop('a', axis=1))
+    assert isinstance(selector(df), pd.DataFrame)
+
+    selector = t.Select(exclude={'by_dtype': {'exclude': ['object']}})
+    assert selector(df).equals(df.drop('color', axis=1))
+
+    selector = t.Select(include={'by_dtype': {'exclude': ['number']}})
+    assert selector(df).equals(df[['color']])
+
+
+def test_select(df):
+
+    selector = t.Select(
+        include={'by_dtype': {
+            'include': ['number']
+        }},
+        exclude={'by_key': {
+            'exclude': ['a']
+        }},
+    )
+    selector(df).equals(df.drop(['a', 'color'], axis=1))
+    assert isinstance(selector(df), pd.DataFrame)
