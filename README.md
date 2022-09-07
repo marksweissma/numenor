@@ -52,11 +52,11 @@ with core code and modules, extend them without ever leaving their development a
 import variants
 
 @variant.primary
-def my_function(variant='base', *args, **kwargs):
+def my_function(variant: str ='base', *args, **kwargs) -> str:
     return getattr(function, variant)(*args, **kwargs)
 
 @my_function.variant('base')
-def my_function( *args, **kwargs):
+def my_function(*args, **kwargs) -> str:
     return 'base'
 
 ```
@@ -66,7 +66,7 @@ the variant can be specified by configuration and if a user wants to extend func
 
 ```python
 @my_function.variant('my_experiment')
-def my_function__my_experiment(*args, **kwargs):
+def my_function__my_experiment(*args, **kwargs) -> str:
     return 'my_experiment'
 
 assert 'my_experiment' == function.my_experiment()
