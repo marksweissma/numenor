@@ -55,6 +55,10 @@ import variants
 def my_function(variant='base', *args, **kwargs):
     return getattr(function, variant)(*args, **kwargs)
 
+@my_function.variant('base')
+def my_function( *args, **kwargs):
+    return 'base'
+
 ```
 the variant can be specified by configuration and if a user wants to extend functionality they can do so explicitly.
 
