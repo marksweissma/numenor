@@ -150,7 +150,7 @@ def regression_example():
 ```
 
 ```bash
->>> 2022-08-29 09:54.31 [info] regression performance mean_absolute_error=41.417137883143404 r2_score=0.49930007687526934
+>>> 2022-08-29 07:54.31 [info] regression performance mean_absolute_error=41.417137883143404 r2_score=0.49930007687526934
 ```
 
 Next we'll wrap this the model in `numenor.estimate.Transformer` in this
