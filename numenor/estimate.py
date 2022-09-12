@@ -4,6 +4,7 @@ from wrapt import decorator
 from copy import deepcopy
 
 from sklearn.base import BaseEstimator, clone
+from sklearn.pipeline import Pipeline
 from sklearn import model_selection
 from typing import *
 from numenor.utils import find_value, replace_value, enforce_first_arg, call_from_attribute_or_callable
@@ -84,6 +85,12 @@ class Transformer(BaseTransformer):
                                                str]] = 'predict_log_proba'
     decision_function_callback: Optional[Union[Callable,
                                                str]] = 'decision_function'
+    serving_response: Callable = field()
+
+    @serving_response.default
+    def serving_response_default(self):
+        ...
+
     id: str = Factory(lambda: md5().hexdigest())
 
     def _build_kwarg_payload(self, cv, param_grid_updates,
@@ -140,3 +147,6 @@ class Transformer(BaseTransformer):
     def decision_function(self, X):
         return call_from_attribute_or_callable(self.decision_function_callback,
                                                self.estimator_, X)
+
+    def serve(self, X):
+        return self.serving_response(X)
