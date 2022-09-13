@@ -1,21 +1,21 @@
-import cloudpickle
 import uvicorn
+import cloudpickle
 from fastapi import FastAPI
 
 predictor = FastAPI()
 
 
-def load_prediction_model(location):
+def load_prediction_model(location: str)j::
     with open(location, 'rb') as f:
-        model = cloudpickle.load(f)
-    return Predictor(model)
+        prediction_model = cloudpickle.load(f)
+    return predictrion_model
 
 
 PREDICION_MODEL = load_prediction_model(location=os.getenv('model_path'))
 
 Features = create_model(
     'Features', **{
-        feature: (Optional[_klass], ...)
+        feature: (Optional[_klass], None)
         for feature, _klass in PREDICTION_MODEL.schema.items()
     })
 
