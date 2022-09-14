@@ -1,32 +1,34 @@
 from __future__ import annotations
-from attr import define, field, Factory, evolve, asdict
-from itertools import chain
 
-from sklearn import model_selection as ms
-import pandas as pd
-from functools import singledispatch, reduce
-
-from numenor.utils import as_factory, enforce_first_arg, pop_with_default_factory
-from typing import *
-from copy import deepcopy
 from collections.abc import Iterable
+from copy import deepcopy
+from functools import reduce, singledispatch
+from itertools import chain
 from numbers import Number
+from typing import *
+
+import pandas as pd
+from attr import Factory, asdict, define, evolve, field
+from sklearn import model_selection as ms
+
+from numenor.utils import (as_factory, enforce_first_arg,
+                           pop_with_default_factory)
 
 GENERIC_SPLIT_FOLD_TYPE = Union[ms.KFold, ms.ShuffleSplit]
-'''
+"""
 get_keys manages the key type
 get_key manages the data type
-'''
+"""
 
 from enum import Enum
 
 
 class DataComponents(Enum):
-    INDEX = 'index'
-    FEATURES = 'features'
-    TARGET = 'target'
-    PREDICTION = 'prediction'
-    METADATA = 'metadata'
+    INDEX = "index"
+    FEATURES = "features"
+    TARGET = "target"
+    PREDICTION = "prediction"
+    METADATA = "metadata"
 
 
 @enforce_first_arg
@@ -112,30 +114,34 @@ def split_factory_from_module_attribute(split_class, split_params=None):
 
 
 def default_split_config():
-    config = {
-        'split_class': 'ShuffleSplit',
-        'split_params': {
-            'random_state': 22
-        }
-    }
+    config = {"split_class": "ShuffleSplit", "split_params": {"random_state": 22}}
     return config
 
 
 @define
 class Split:
-    executor: Any = field(converter=as_factory(split_factory),
-                          default=Factory(default_split_config))
+    executor: Any = field(
+        converter=as_factory(split_factory), default=Factory(default_split_config)
+    )
     stratify_keys: Iterable = ()
     group_keys: Iterable = ()
 
     def get_index_location_generator(
-            self, anchor_data: Iterable) -> Generator[Iterable]:
-        stratification = anchor_data[get_keys(
-            self.stratify_keys, anchor_data)] if self.stratify_keys else None
-        groups = anchor_data[get_keys(
-            self.group_keys, anchor_data)] if self.group_keys else None
-        index_location_generator = self.executor.split(anchor_data,
-                                                       stratification, groups)
+        self, anchor_data: Iterable
+    ) -> Generator[Iterable]:
+        stratification = (
+            anchor_data[get_keys(self.stratify_keys, anchor_data)]
+            if self.stratify_keys
+            else None
+        )
+        groups = (
+            anchor_data[get_keys(self.group_keys, anchor_data)]
+            if self.group_keys
+            else None
+        )
+        index_location_generator = self.executor.split(
+            anchor_data, stratification, groups
+        )
         return index_location_generator
 
 
@@ -162,7 +168,7 @@ def partition_datas(key, datas):
         else:
             tail.append(data)
     if not head:
-        raise ColumnError(f'key: {key} does not exist in {datas}')
+        raise ColumnError(f"key: {key} does not exist in {datas}")
     return head, tail
 
 
@@ -176,7 +182,7 @@ def partition_datas_by_name(key, datas):
         else:
             tail.append(data)
     if not head:
-        raise ColumnError(f'key: {key} does not exist in {datas}')
+        raise ColumnError(f"key: {key} does not exist in {datas}")
     return head, tail
 
 
@@ -193,8 +199,9 @@ def prefix_expand(match_key, keys):
 @prefix_expand.register(tuple)
 def prefix_expand_collection(match_key, keys):
     return [
-        key for key in keys if any(
-            str(key).startswith(str(single_key)) for single_key in match_key)
+        key
+        for key in keys
+        if any(str(key).startswith(str(single_key)) for single_key in match_key)
     ]
 
 
@@ -215,26 +222,26 @@ def infer_str(keyset, keys):
 
 @define
 class Column:
-    column: Union[Hashable, List[Hashable]]
+    column: Union[Hashable, List[Hashable]] = None
     matcher: Callable = prefix_expand
-    postprocess: Callbale = infer
+    postprocess: Callable = infer
 
     @classmethod
     def infer_from_shape(cls, arr, **kwargs):
-        if hasattr(arr, 'ndim') and arr.ndim > 1 and hasattr(arr, 'columns'):
+        if hasattr(arr, "ndim") and arr.ndim > 1 and hasattr(arr, "columns"):
             column = list(arr.columns)
-        elif hasattr(arr, 'ndim') and arr.ndim == 1 and hasattr(arr, 'name'):
+        elif hasattr(arr, "ndim") and arr.ndim == 1 and hasattr(arr, "name"):
             column = arr.name
-        elif hasattr(arr, 'ndim') and arr.ndim > 1:
+        elif hasattr(arr, "ndim") and arr.ndim > 1:
             column = list(range(arr.ndim))
 
-        elif hasattr(arr, 'ndim') and arr.ndim == 1:
+        elif hasattr(arr, "ndim") and arr.ndim == 1:
             column = 0
         elif arr is None:
             column = None
         else:
-            ValueError(f'arr {arr} not a valid shape to infer from')
-        return cls(column, **kwargs)
+            ValueError(f"arr {arr} not a valid shape to infer from")
+        return cls(column, **kwargs)  #  type: ignore
 
     def find_matches(self, matchable_columns: List[Hashable]):
         matches = self.matcher(self.column, matchable_columns)
@@ -247,12 +254,17 @@ class Column:
 @define
 class Data:
     table: Any
-    feature_column: Column = field(converter=as_factory(Column), default=None)
-    target_column: Column = field(converter=as_factory(Column), default=None)
-    prediction_column: Column = field(converter=as_factory(Column),
-                                      default=None)
-    index_column: Column = field(converter=as_factory(Column), default=None)
-    metadata_column: Column = field(converter=as_factory(Column), default=None)
+    feature_column: Column = field(
+        converter=as_factory(Column), default=Factory(Column)
+    )
+    target_column: Column = field(converter=as_factory(Column), default=Factory(Column))
+    prediction_column: Column = field(
+        converter=as_factory(Column), default=Factory(Column)
+    )
+    index_column: Column = field(converter=as_factory(Column), default=Factory(Column))
+    metadata_column: Column = field(
+        converter=as_factory(Column), default=Factory(Column)
+    )
     concat: Optional[Callable] = pandas_concat
     name: Optional[Union[str, int]] = None
 
@@ -261,13 +273,15 @@ class Data:
         return cls(table, **params)
 
     @classmethod
-    def from_components(cls,
-                        features=None,
-                        index=None,
-                        target=None,
-                        prediction=None,
-                        metadata=None,
-                        **params):
+    def from_components(
+        cls,
+        features=None,
+        index=None,
+        target=None,
+        prediction=None,
+        metadata=None,
+        **params,
+    ):
 
         feature_column = Column.infer_from_shape(features)
         index_column = Column.infer_from_shape(index)
@@ -275,20 +289,19 @@ class Data:
         prediction_column = Column.infer_from_shape(prediction)
         metadata_column = Column.infer_from_shape(metadata)
 
-        _concat = params.get('concat', pandas_concat)
-        block = [
-            i for i in (features, target, prediction, metadata)
-            if i is not None
-        ]
+        _concat = params.get("concat", pandas_concat)
+        block = [i for i in (features, target, prediction, metadata) if i is not None]
         table = _concat(block) if block else []
 
-        params.update({
-            'feature_column': feature_column,
-            'index_column': index_column,
-            'target_column': target_column,
-            'metadata_column': metadata_column,
-            'prediction_column': prediction_column,
-        })
+        params.update(
+            {
+                "feature_column": feature_column,
+                "index_column": index_column,
+                "target_column": target_column,
+                "metadata_column": metadata_column,
+                "prediction_column": prediction_column,
+            }
+        )
 
         return cls.from_table(table, **params)
 
@@ -307,8 +320,12 @@ class Data:
 
     @property
     def non_feature_column(self):
-        return (self.index_column, self.metadata_column,
-                self.prediction_column, self.target_column)
+        return (
+            self.index_column,
+            self.metadata_column,
+            self.prediction_column,
+            self.target_column,
+        )
 
     @property
     def feature_keys(self):
@@ -317,11 +334,13 @@ class Data:
         else:
             non_feature_columns = [
                 column.find_matches(self.columns)
-                for column in self.non_feature_column if column
+                for column in self.non_feature_column
+                if column
             ]
             exclude_columns = reduce(
-                lambda x, y: x.union(enforce_list(y))
-                if y else x, [set([]), *non_feature_columns])
+                lambda x, y: x.union(enforce_list(y)) if y else x,
+                [set([]), *non_feature_columns],
+            )
             columns = [i for i in self.table if i not in exclude_columns]
         return columns
 
@@ -350,14 +369,12 @@ class Data:
         updates = deepcopy(updates)
 
         if location:
-            location_key = f'{location}_key'
-            updates.update({
-                location_key:
-                chain_enforce_list(keys, getattr(self, location_key))
-            })
+            location_key = f"{location}_key"
+            updates.update(
+                {location_key: chain_enforce_list(keys, getattr(self, location_key))}
+            )
 
-        table = self.concat([self.table, data
-                             ]) if self.table is not None else data
+        table = self.concat([self.table, data]) if self.table is not None else data
         return evolve(self, table=table, **updates)
 
     def get_indices_from_index_location(self, ilocs):
@@ -382,15 +399,16 @@ class Data:
         return evolve(self, table=table, **updates)
 
     def groupby(self, group_key):
-        return ((name, evolve(self, table=_df))
-                for name, _df in self.table.groupby(group_key))
+        return (
+            (name, evolve(self, table=_df))
+            for name, _df in self.table.groupby(group_key)
+        )
 
 
 @define
 class Dataset:
     datas: List[Data] = field(converter=dataset_enforcer)
-    splitter: Split = field(converter=as_factory(Split),
-                            default=Factory(Split))
+    splitter: Split = field(converter=as_factory(Split), default=Factory(Split))
     children: Sequence = Factory(list)
     anchor_data_key: Union[int, str] = None
 
@@ -399,7 +417,7 @@ class Dataset:
         return cls(datas, **kwargs)
 
     @classmethod
-    def from_method(cls, method='from_components', **kwargs):
+    def from_method(cls, method="from_components", **kwargs):
         return cls(getattr(Data, method)(**kwargs))
 
     def _build_children_split_confs(self):
@@ -409,22 +427,18 @@ class Dataset:
         if len(heads) == 1:
             heads = [heads[0], deepcopy(heads[0])]
 
+        [head.update({"children": None}) for head in heads if "children" not in head]
         [
-            head.update({'children': None}) for head in heads
-            if 'children' not in head
-        ]
-        [
-            asdict(self, recurse=False,
-                   filter=lambda x, y: x.name != 'datas').update(head)
+            asdict(self, recurse=False, filter=lambda x, y: x.name != "datas").update(
+                head
+            )
             for head in heads
         ]
         return heads
 
     def build_children_params(self):
         if not self.children:
-            params = asdict(self,
-                            recurse=False,
-                            filter=lambda x, y: x.name != 'datas')
+            params = asdict(self, recurse=False, filter=lambda x, y: x.name != "datas")
             confs = [deepcopy(params), deepcopy(params)]
         else:
             confs = self._build_children_split_confs()
@@ -446,31 +460,32 @@ class Dataset:
         return self.splitter.get_index_location_generator(data.table)
 
     def split(self, index_location_generator=None, anchor=None):
-        anchor, _ = self.get_anchor_rest_data() if anchor is None else (anchor,
-                                                                        None)
-        index_location_generator = index_location_generator if index_location_generator is not None else self.get_index_location_generator(
-            anchor)
+        anchor, _ = self.get_anchor_rest_data() if anchor is None else (anchor, None)
+        index_location_generator = (
+            index_location_generator
+            if index_location_generator is not None
+            else self.get_index_location_generator(anchor)
+        )
 
         train_conf, test_conf = self.build_children_params()
-        train_index_locations, test_index_locations = next(
-            index_location_generator)
+        train_index_locations, test_index_locations = next(index_location_generator)
 
-        train_indices = anchor.get_indices_from_index_location(
-            train_index_locations)
-        test_indices = anchor.get_indices_from_index_location(
-            test_index_locations)
+        train_indices = anchor.get_indices_from_index_location(train_index_locations)
+        test_indices = anchor.get_indices_from_index_location(test_index_locations)
 
         train_data = []
         test_data = []
         for data in self.datas:
             train_data.append(
                 data.from_index_values(
-                    train_indices,
-                    **pop_with_default_factory(train_conf, data.name)))
+                    train_indices, **pop_with_default_factory(train_conf, data.name)
+                )
+            )
             test_data.append(
                 data.from_index_values(
-                    test_indices,
-                    **pop_with_default_factory(test_conf, data.name)))
+                    test_indices, **pop_with_default_factory(test_conf, data.name)
+                )
+            )
 
         train_dataset = evolve(self, datas=train_data, **train_conf)
         test_dataset = evolve(self, datas=test_data, **test_conf)
@@ -479,8 +494,11 @@ class Dataset:
 
     def split_iterator(self, index_location_generator=None, n_splits=5):
         anchor, _ = self.get_anchor_rest_data()
-        index_location_generator = index_location_generator if index_location_generator is not None else self.get_index_location_generator(
-            anchor)
+        index_location_generator = (
+            index_location_generator
+            if index_location_generator is not None
+            else self.get_index_location_generator(anchor)
+        )
         while n_splits:
             n_splits -= 1
             yield self.split(index_location_generator, anchor)
