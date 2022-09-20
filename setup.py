@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="reeses",
+    name="numenor",
     version="0.0.1",
     author="Mark Weiss",
     author_email="mark.s.weiss.ma@gmail.com",
