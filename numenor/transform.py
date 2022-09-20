@@ -1,22 +1,19 @@
-from attrs import define, field, Factory
+import itertools
 from functools import singledispatch
+from typing import *
+
+import numpy as np
+import pandas as pd
+import variants
+from attrs import Factory, define, field
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler, StandardScaler
 
-import itertools
-import variants
-
-import numpy as np
-import pandas as pd
-
 from numenor.utils import as_factory, call_from_attribute_or_callable
-
-from typing import *
 
 
 class PandasMixin:
-
     def transform(self, X):
         if isinstance(X, pd.DataFrame):
             columns = list(X)
@@ -28,7 +25,6 @@ class PandasMixin:
 
 
 class BaseTransformer(TransformerMixin, BaseEstimator):
-
     def fit(self, X, y=None, **fit_params):
         return self
 
@@ -41,13 +37,13 @@ def select_include(variant, df, **kwargs):
     return getattr(select_include, variant)(df, **kwargs)
 
 
-@select_include.variant('by_key')
+@select_include.variant("by_key")
 def select_include_by_key(df, include=None, **kwargs):
     keys = [i for i in df if i in include] if include is not None else list(df)
     return keys
 
 
-@select_include.variant('by_dtype')
+@select_include.variant("by_dtype")
 def select_include_by_key(df, use_head=True, **kwargs):
     selected = (df.head() if use_head else df).select_dtypes(**kwargs)
     keys = [i for i in df if i in selected]
@@ -59,13 +55,13 @@ def select_exclude(variant, df, **kwargs):
     return getattr(select_exclude, variant)(df, **kwargs)
 
 
-@select_exclude.variant('by_key')
+@select_exclude.variant("by_key")
 def select_exclude_by_key(df, exclude, **kwargs):
     keys = [i for i in df if i not in exclude]
     return keys
 
 
-@select_exclude.variant('by_dtype')
+@select_exclude.variant("by_dtype")
 def select_exclude_by_key(df, use_head=True, **kwargs):
     selected = (df.head() if use_head else df).select_dtypes(**kwargs)
     keys = [i for i in df if i not in selected]
@@ -82,11 +78,18 @@ class Select:
             includes = list(df)
         else:
             includes = list(
-                itertools.chain(*(select_include(method, df, **kwargs)
-                                  for method, kwargs in self.include.items())))
+                itertools.chain(
+                    *(
+                        select_include(method, df, **kwargs)
+                        for method, kwargs in self.include.items()
+                    )
+                )
+            )
         if self.exclude:
-            exclusions = (select_exclude(method, df, **kwargs)
-                          for method, kwargs in self.exclude.items())
+            exclusions = (
+                select_exclude(method, df, **kwargs)
+                for method, kwargs in self.exclude.items()
+            )
             excludes = set(itertools.chain(*(i for i in exclusions if i)))
         else:
             excludes = set()
@@ -96,7 +99,7 @@ class Select:
 
 @singledispatch
 def infer_schema(obj):
-    raise TypeError(f'obj: {obj} type: {type(obj)} not supported')
+    raise TypeError(f"obj: {obj} type: {type(obj)} not supported")
 
 
 @infer_schema.register(pd.DataFrame)
@@ -114,8 +117,7 @@ def infer_schema_series(obj):
 
 @define
 class SchemaSelectMixin:
-    selection: Callable = field(converter=as_factory(Select),
-                                default=Factory(dict))
+    selection: Callable = field(converter=as_factory(Select), default=Factory(dict))
     infer_schema: Callable = infer_schema
 
     def build_schema(self, **kwargs):
@@ -126,14 +128,14 @@ class SchemaSelectMixin:
     def fit(self, X, y=None, **fit_params):
         self.schema = {}
         X_t = self.selection(X)
-        payload = {'X': X_t}
-        payload.update({'y': y}) if y is not None else None
+        payload = {"X": X_t}
+        payload.update({"y": y}) if y is not None else None
 
         self.build_schema(**payload)
         return super().fit(X, y=y, **fit_params)
 
     def transform(self, X):
-        X_t = X[self.schema['X']]
+        X_t = X[self.schema["X"]]
         return super().transform(X_t)
 
 
@@ -160,38 +162,43 @@ SECONDS_IN_WEEK = 7 * 24 * 3600
 
 @define
 class CallableTransformer(BaseTransformer):
-    attr: Union[str, Callable] = 'fillna'
-    attr_args: Tuple = ('missing', )
+    attr: Union[str, Callable] = "fillna"
+    attr_args: Tuple = ("missing",)
     attr_kwargs: Dict = Factory(dict)
 
     def transform(self, X):
-        return call_from_attribute_or_callable(self.attr, X, *self.attr_args,
-                                               **self.attr_kwargs)
+        return call_from_attribute_or_callable(
+            self.attr, X, *self.attr_args, **self.attr_kwargs
+        )
 
 
 @define
 class TimeFeaturesProjectUnitCircle(TransformerMixin, BaseEstimator):
     columns: List
     deltas: List = field()
-    unit: str = '1D'
+    unit: str = "1D"
 
     @deltas.default
     def default_deltas(self):
         return list(itertools.combinations(self.columns, 2))
 
     def single_column_features(self, df, column):
-        second_of_day = df[column].dt.hour * 3600 + df[
-            column].dt.minute * 60 + df[column].dt.second
-        second_of_week = df[
-            column].dt.dayofweek * SECONDS_IN_DAY + second_of_day
-        df[f'{column}_time_of_day_x'] = np.cos(2 * np.pi * second_of_day /
-                                               SECONDS_IN_DAY)
-        df[f'{column}_time_of_day_y'] = np.sin(2 * np.pi * second_of_day /
-                                               SECONDS_IN_DAY)
-        df[f'{column}_time_of_week_x'] = np.cos(2 * np.pi * second_of_week /
-                                                SECONDS_IN_WEEK)
-        df[f'{column}_time_of_week_y'] = np.sin(2 * np.pi * second_of_week /
-                                                SECONDS_IN_WEEK)
+        second_of_day = (
+            df[column].dt.hour * 3600 + df[column].dt.minute * 60 + df[column].dt.second
+        )
+        second_of_week = df[column].dt.dayofweek * SECONDS_IN_DAY + second_of_day
+        df[f"{column}_time_of_day_x"] = np.cos(
+            2 * np.pi * second_of_day / SECONDS_IN_DAY
+        )
+        df[f"{column}_time_of_day_y"] = np.sin(
+            2 * np.pi * second_of_day / SECONDS_IN_DAY
+        )
+        df[f"{column}_time_of_week_x"] = np.cos(
+            2 * np.pi * second_of_week / SECONDS_IN_WEEK
+        )
+        df[f"{column}_time_of_week_y"] = np.sin(
+            2 * np.pi * second_of_week / SECONDS_IN_WEEK
+        )
         return df
 
     def fit(self, X, y=None, **fit_params):
@@ -203,7 +210,6 @@ class TimeFeaturesProjectUnitCircle(TransformerMixin, BaseEstimator):
             X = self.single_column_features(X, column)
 
         for start, stop in self.deltas:
-            X[f'{start}__{stop}_delta'] = (X[stop] - X[start]) / pd.Timedelta(
-                self.unit)
+            X[f"{start}__{stop}_delta"] = (X[stop] - X[start]) / pd.Timedelta(self.unit)
         columns = set(self.columns).union(chain.from_iterable(self.deltas))
         return X.drop(columns, axis=1)
