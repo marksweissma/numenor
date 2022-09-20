@@ -156,10 +156,6 @@ class StandardScaler(PandasMixin, StandardScaler):
     pass
 
 
-SECONDS_IN_DAY = 24 * 3600
-SECONDS_IN_WEEK = 7 * 24 * 3600
-
-
 @define
 class CallableTransformer(BaseTransformer):
     attr: Union[str, Callable] = "fillna"
@@ -170,6 +166,10 @@ class CallableTransformer(BaseTransformer):
         return call_from_attribute_or_callable(
             self.attr, X, *self.attr_args, **self.attr_kwargs
         )
+
+
+SECONDS_IN_DAY = 24 * 3600
+SECONDS_IN_WEEK = 7 * 24 * 3600
 
 
 @define
