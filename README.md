@@ -231,7 +231,7 @@ def regression_example_pipeline_with_early_stopping(**kwargs):
         "xgbregressor__eval_set": [(X_train_validate, y_train_validate)],
     }
 
-    model.fit(X_train, y_train, **early_stopping_params)
+    model.fit(X_train_fit, y_train_fit, **early_stopping_params)
 
     predictions = model.predict(X_test)
 
@@ -402,7 +402,7 @@ def regression_example_dataset__early_stopping(**kwargs):
         },
     )
 
-    model.fit(train_dataset.features, train_dataset.target, **fit_params)
+    model.fit(train_dataset_fitting_.features, train_dataset_fitting.target, **fit_params)
 
     predictions = model.predict(test_dataset.features)
 
