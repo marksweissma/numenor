@@ -1,81 +1,78 @@
-from attrs import define, field, Factory
+from typing import *
+
+import pandas as pd
+import variants
+from attrs import define, field
+from numpy.typing import ArrayLike
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.pipeline import Pipeline
-from functools import singledispatch
+
+from numenor.estimate import Transformer
 
 
-@singledispatch
-def package_predictions(model, prediction):
-    if isinstance(prediction, np.ndarray) and prediction.shape == (1, ):
-        prediction = prediction[0]
-    return {'prediction': prediction}
+@variants.primary
+def package_prediction(variant="infer", model=None, prediction=None, **kwargs):
+    return getattr(package_prediction, variant)(model, prediction, **kwargs)
 
 
-@package_predictions.register(ClassifierMixin)
-def package_predictions(model, prediction):
+@package_prediction.variant("infer")
+def package_prediction_infer(model: BaseEstimator, prediction: ArrayLike):
+    if prediction.ndim == 1 or prediction.ndim == 2 and prediction.shape[1] == 1:
+        result = package_prediction.one_dimensional(model, prediction)
+
+    elif prediction.ndim == 2:
+        result = package_prediction.two_dimensional(model, prediction)
+    else:
+        result = {"prediction": prediction}
+
+
+@package_prediction.variant("one_dimensional")
+def package_prediction_one_dimensional(model: BaseEstimator, prediction: ArrayLike):
+    prediction = prediction[0] if prediction.ndim == 1 else prediction[0, 0]
+    return {"prediction": prediction}
+
+
+@package_prediction.variant("two_dimensional")
+def package_prediction_two_dimensional(model: ClassifierMixin, prediction: ArrayLike):
     classes = model.classes_
-    if isinstance(
-            prediction,
-            np.ndarray) and prediction.ndim == 2 and prediction.shape[0] == 1:
-        probabilities = {
-            class_: prediction[0][idx]
-            for idx, class_ in enumerate(classes)
-        }
-
-    if isinstance(
-            prediction,
-            np.ndarray) and prediction.ndim == 2 and prediction.shape[0] == 1:
-        prediction = classes[prediction[0, :].argmax()]
+    probabilities = {class_: prediction[0, idx] for idx, class_ in enumerate(classes)}
+    prediction = classes[prediction[0, :].argmax()]
 
     return {
-        'probabilities': probabilities,
-        'argmax_class': classes[prediction[0, :]],
+        "probabilities": probabilities,
+        "argmax_class": prediction,
     }
 
 
 def pandas_feature_converter(features):
-    return pd.DataFrame.from_dict(features, orient='index')
+    return pd.DataFrame.from_dict(features, orient="index")
 
 
 @define
-class Serving:
-    transformer: BaseEstimator
-    feature_schema: Dict = field()
-
-    @feature_schema.default
-    def default_feature_schema(self):
-        ...
-
+class Serve:
+    transformer: Transformer
+    feature_schema: Dict
     response_schema: Dict = field()
-
-    @response_schema.default
-    def default_response_schema(self):
-        ...
-
     feature_converter: Callable = pandas_feature_converter
-    respone: Callable = package_predictions
+    response: Callable = package_prediction
 
     def __call__(self, features, *args, **kwargs):
         features = self.feature_converter(features)
-        return self.response(transformer, features, *args, **kwargs)
+        prediction = self.transformer.serve(features)
+        return self.response(model=self.transformer, prediction, *args, **kwargs)
 
     @classmethod
-    def infer_from_transformer(
-            cls,
-            transformer,
-            instance_check: Callable = lambda x: isinstance(x, Pipeline),
-            **extras):
-        model = transformer.executor
-        while instance_check(model):
-            model = model[-1]
-        return cls.infer_from_model(model)
+    def infer_from_transformer_and_example(
+        cls,
+        transformer,
+        instance_check: Callable = lambda x: isinstance(x, Pipeline),
+        **extras
+    ):
+        if 'feature_schema' not in extras and hastattr(transformer, 'feature_schema'):
+            extras['feature_schema'] = transformer.feature_schema
+        if 'response_schema' not in extras and hastattr(transformer, 'feature_schema'):
+            extras['response_schema'] = transformer.feature_schema
+
 
     @classmethod
     def infer_from_model(cls, model, **extras):
-        ...
-        schema = {'model_id': str}
-
-    def from_serving_response(self, **extras):
-        schema = self.schema.copy()
-        schema.update(extras)
-        return evolve(self, schema=schema)
