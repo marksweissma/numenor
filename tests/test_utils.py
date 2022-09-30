@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 from functools import singledispatch
 
 import pytest
+from attrs import define
 from wrapt import decorator
 
-from numenor.utils import as_factory, enforce_first_arg
+from numenor.utils import (as_factory, call_from_attribute_or_callable,
+                           enforce_first_arg, get_attribute_or_call,
+                           pop_with_default_factory)
 
 
 def test_enforce_first_arg():
@@ -40,3 +45,33 @@ def test_enforce_first_arg():
         return -a
 
     assert fixed_func(**payload) == -payload["a"]
+
+
+@pytest.fixture
+def example():
+    @define
+    class A:
+        b: int = 1
+
+        @staticmethod
+        def calculate(a: A, value: int = 1):
+            return a.b + value
+
+        def augment(self, value: int = 1):
+
+            return self.b + value
+
+    return A()
+
+
+def test_get_attribute_or_call(example):
+    assert get_attribute_or_call("b", example) == 1
+    assert get_attribute_or_call(example.calculate, example) == 2
+    assert get_attribute_or_call(example.calculate, example, 2) == 3
+    assert get_attribute_or_call(example.calculate, example, value=3) == 4
+
+
+def test_call_from_attribute_or_callable(example):
+    assert call_from_attribute_or_callable("augment", example, 0) == 1
+    assert call_from_attribute_or_callable(example.calculate, example, 2) == 3
+    assert call_from_attribute_or_callable(example.calculate, example, value=3) == 4

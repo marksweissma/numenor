@@ -1,5 +1,5 @@
 from copy import deepcopy
-from functools import singledispatch
+from functools import cached_property, singledispatch
 from hashlib import md5
 from typing import *
 
@@ -75,16 +75,51 @@ def fit_sklearn_search(
 
 
 @define
-class Estimator:
-    executor: BaseEstimator
+class SKAttributeTransformerMixin:
+    attribute_name: str = "executor"
+    fit_callback: Optional[Union[Callable, str]] = "fit"
     transform_callback: Optional[Union[Callable, str]] = "transform"
     predict_callback: Optional[Union[Callable, str]] = "predict"
     predict_proba_callback: Optional[Union[Callable, str]] = "predict_proba"
     predict_log_proba_callback: Optional[Union[Callable, str]] = "predict_log_proba"
     decision_function_callback: Optional[Union[Callable, str]] = "decision_function"
 
-    feature_schema: Dict[str, type] = Factory(dict)
-    response_schema: Dict[str, type] = Factory(dict)
+    @cached_property
+    def attribute(self):
+        return getattr(self, self.attribute_name)
+
+    def fit(self, X, y=None, **fit_params):
+        return call_from_attribute_or_callable(
+            self.fit_callback, self.attribute, X, y=y, **fit_params
+        )
+
+    def transform(self, X):
+        return call_from_attribute_or_callable(
+            self.transform_callback, self.attribute, X
+        )
+
+    def predict(self, X):
+        return call_from_attribute_or_callable(self.predict_callback, self.attribute, X)
+
+    def predict_proba(self, X):
+        return call_from_attribute_or_callable(
+            self.predict_proba_callback, self.attribute, X
+        )
+
+    def predict_log_proba(self, X):
+        return call_from_attribute_or_callable(
+            self.predict_log_proba_callback, self.attribute, X
+        )
+
+    def decision_function(self, X):
+        return call_from_attribute_or_callable(
+            self.decision_function_callback, self.attribute, X
+        )
+
+
+@define
+class Estimator(SKAttributeTransformerMixin, BaseTransformer):
+    executor: BaseEstimator = Factory(BaseTransformer)
 
     response: Callable = field()
 
@@ -99,38 +134,17 @@ class Estimator:
             response = "predict"
         return response
 
-    def transform(self, X):
-        return call_from_attribute_or_callable(
-            self.transform_callback, self.estimator_, X
-        )
+    response_schema: Dict[str, type] = field(init=False, factory=dict)
+    feature_schema: Dict[str, type] = field(init=False, factory=dict)
 
-    def predict(self, X):
-        return call_from_attribute_or_callable(
-            self.predict_callback, self.estimator_, X
-        )
-
-    def predict_proba(self, X):
-        return call_from_attribute_or_callable(
-            self.predict_proba_callback, self.estimator_, X
-        )
-
-    def predict_log_proba(self, X):
-        return call_from_attribute_or_callable(
-            self.predict_log_proba_callback, self.estimator_, X
-        )
-
-    def decision_function(self, X):
-        return call_from_attribute_or_callable(
-            self.decision_function_callback, self.estimator_, X
-        )
-
-    def response(self, X):
-        return self.response(X)
+    def __call__(self, X):
+        return call_from_attribute_or_callable(self.response, self.executor, X)
 
 
 @define
-class Transformer(BaseTransformer):
-    estimator: Estimator = field(converter=as_factory(Estimator))
+class Trainer(SKAttributeTransformerMixin, BaseTransformer):
+    attribute_name: str = "estimator"
+    estimator: Any = field(converter=as_factory(Estimator), factory=Estimator)
     fit_variant: Optional[Union[str, Callable]] = None
     param_grid: Dict[str, Any] = Factory(dict)
     search_kwargs: Dict[str, Any] = Factory(dict)
@@ -163,10 +177,11 @@ class Transformer(BaseTransformer):
         param_grid, search_kwargs = self._build_kwarg_payload(
             cv, param_grid_updates, search_kwarg_updates
         )
+
         fit_variant = fit_variant if fit_variant else self.fit_variant
-        self.estimator_ = fit(
+        fit(
             self.fit_variant,
-            self.executor,
+            self.estimator,
             X,
             y,
             param_grid=param_grid,
@@ -174,18 +189,3 @@ class Transformer(BaseTransformer):
             **fit_params
         )
         return self
-
-    def transform(self, X):
-        return self.estimator.transform(X)
-
-    def predict(self, X):
-        return self.estimator.predict(X)
-
-    def predict_proba(self, X):
-        return self.estimator.predict_proba(X)
-
-    def predict_log_proba(self, X):
-        return self.estimator.predict_log_proba(X)
-
-    def decision_function(self, X):
-        return self.estimator.decision_function(X)
