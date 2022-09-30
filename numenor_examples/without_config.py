@@ -1,8 +1,9 @@
-from functools import lru_cache
+from functools import lru_cache, singledispatch
 
 import pandas as pd
 import structlog
 import variants
+from fire import Fire
 from matplotlib import pyplot as plt
 from sklearn import datasets
 from sklearn.cluster import KMeans
@@ -55,18 +56,30 @@ def regression_example_base(plot=True, **kwargs):
         plt.show()
 
 
-@regression_example.variant("transformer")
+@regression_example.variant("trainer")
 def regression_example_transformer(plot=True, **kwargs):
     X, y = load_sklearn_dataset(datasets.load_diabetes)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=RANDOM_STATE)
 
-    model = estimate.Transformer(make_pipeline(RobustScaler(), Lasso()))
+    model = estimate.Trainer(
+        estimator={"executor": make_pipeline(RobustScaler(), Lasso())}
+    )
     model.fit(X_train, y_train)
 
     predictions = model.predict(X_test)
 
     LOG.msg(
         "regression performance",
+        kind="trainer",
+        r2_score=r2_score(y_test, predictions),
+        mean_absolute_error=mean_absolute_error(y_test, predictions),
+    )
+
+    predictions = model.estimator.predict(X_test)
+
+    LOG.msg(
+        "regression performance",
+        kind="estimator",
         r2_score=r2_score(y_test, predictions),
         mean_absolute_error=mean_absolute_error(y_test, predictions),
     )
@@ -90,7 +103,7 @@ def regression_example_pipeline_with_early_stopping(**kwargs):
     )
 
     # split training data into "fitting" and "validating" for early stopping
-    X_train_fit, X_train_validate, X_train_fit, y_train_validate = train_test_split(
+    X_train_fit, X_train_validate, y_train_fit, y_train_validate = train_test_split(
         X_train, y_train
     )
 
@@ -100,7 +113,7 @@ def regression_example_pipeline_with_early_stopping(**kwargs):
         "xgbregressor__eval_set": [(X_train_validate, y_train_validate)],
     }
 
-    model.fit(X_train, y_train, **early_stopping_params)
+    model.fit(X_train_fit, y_train_fit, **early_stopping_params)
 
     predictions = model.predict(X_test)
 
@@ -206,7 +219,9 @@ def regression_example_dataset__early_stopping(**kwargs):
         },
     )
 
-    model.fit(train_dataset.features, train_dataset.target, **fit_params)
+    model.fit(
+        train_dataset_fitting.features, train_dataset_fitting.target, **fit_params
+    )
 
     predictions = model.predict(test_dataset.features)
 
@@ -223,3 +238,19 @@ def regression_example_dataset__early_stopping(**kwargs):
         r2_score=r2_score(test_dataset.target, predictions),
         mean_absolute_error=mean_absolute_error(test_dataset.target, predictions),
     )
+
+
+def main(variant="all", safe=True):
+
+    variants = regression_example._variants if variant == "all" else [variant]
+    for variant in variants:
+        try:
+            regression_example(variant, plot=False)
+        except Exception as e:
+            LOG.msg("failed to run", variant=variant, error=e)
+            if not safe:
+                raise e
+
+
+if __name__ == "__main__":
+    Fire(main)
