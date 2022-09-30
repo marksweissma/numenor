@@ -159,22 +159,22 @@ def regression_example_base(plot=True, **kwargs):
 >>> 2022-08-29 07:54.31 [info] regression performance mean_absolute_error=41.417137883143404 r2_score=0.49930007687526934
 ```
 
-Next we'll wrap this the model in `numenor.estimate.Transformer` in this
-example the `Transformer` doesn't give us much, but it provides
+Next we'll wrap this the model in `numenor.estimate.Trainer` in this
+example the `Trainer` doesn't give us much, but it provides
 instrumentation of the pipeline and an interface for callbacks
-on the object itself. The `Transformer` also helps
+on the object itself. The `Trainer` also helps
 if we want to deploy this predictor in a fast api app - more on that in that in
 the app example. While it doesn't give us much, it also shouldn't cost anything
 it has the same interfaces and support as the sklearn model - setting params
 just requires adding the `executor__` prefix to the specification.
 
 ```python
-@regression_example.variant("transformer")
-def regression_example_transformer(plot=True, **kwargs):
+@regression_example.variant("trainer")
+def regression_example_trainer(plot=True, **kwargs):
     X, y = load_sklearn_dataset(datasets.load_diabetes)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=RANDOM_STATE)
 
-    model = estimate.Transformer(make_pipeline(RobustScaler(), Lasso()))
+    model = estimate.Trainer(make_pipeline(RobustScaler(), Lasso()))
     model.fit(X_train, y_train)
 
     predictions = model.predict(X_test)
