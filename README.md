@@ -221,7 +221,7 @@ def regression_example_pipeline_with_early_stopping(**kwargs):
     )
 
     # split training data into "fitting" and "validating" for early stopping
-    X_train_fit, X_train_validate, X_train_fit, y_train_validate = train_test_split(
+    X_train_fit, X_train_validate, y_train_fit, y_train_validate = train_test_split(
         X_train, y_train
     )
 
