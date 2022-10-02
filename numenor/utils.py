@@ -1,13 +1,13 @@
-from functools import lru_cache, reduce
-from functools import singledispatch
-from wrapt import decorator
-from inspect import signature
 import inspect
-import numpy as np
 from enum import Enum
-from attr import define
-from typing import Any, Callable
+from functools import lru_cache, reduce, singledispatch
+from inspect import signature
 from numbers import Number
+from typing import Any, Callable
+
+import numpy as np
+from attr import define
+from wrapt import decorator
 
 
 def get_signature_params(func):
@@ -19,11 +19,8 @@ def enforce_first_arg(wrapped, instance, args, kwargs):
     if not args:
         parameters = get_signature_params(wrapped)
         first_arg_key = list(parameters)[0]
-        args = (kwargs[first_arg_key], )
-        kwargs = {
-            key: value
-            for key, value in kwargs.items() if key != first_arg_key
-        }
+        args = (kwargs[first_arg_key],)
+        kwargs = {key: value for key, value in kwargs.items() if key != first_arg_key}
 
     return wrapped(*args, **kwargs)
 
@@ -74,7 +71,7 @@ def append_key(key, chain):
         elif isinstance(chain, list):
             keychain = chain + [key]
         else:
-            raise TypeError('chain needs to be list or string')
+            raise TypeError("chain needs to be list or string")
     else:
         keychain = key
     return keychain
@@ -88,7 +85,7 @@ def append_key_list(key, chain):
         elif isinstance(chain, list):
             keychain = chain + key
         else:
-            raise TypeError('chain needs to be list or string')
+            raise TypeError("chain needs to be list or string")
     else:
         keychain = key
     return keychain
@@ -97,9 +94,9 @@ def append_key_list(key, chain):
 def pop_with_default_factory(store, key_sequence, factory=dict):
     if not key_sequence:
         return factory()
-    value = store if hasattr(store, 'pop') else factory()
+    value = store if hasattr(store, "pop") else factory()
     for key in key_sequence:
-        value = value.pop(key) if hasattr(value, 'pop') else factory()
+        value = value.pop(key) if hasattr(value, "pop") else factory()
     return value
 
 
@@ -116,14 +113,14 @@ def get_attribute_or_call_(attribute_or_callable, obj, *args, **kwargs):
 
 @enforce_first_arg
 @singledispatch
-def call_from_attribute_or_callable(attribute_or_callable, obj, *args,
-                                    **kwargs):
+def call_from_attribute_or_callable(attribute_or_callable, obj, *args, **kwargs):
     return attribute_or_callable(obj, *args, **kwargs)
 
 
 @call_from_attribute_or_callable.register(str)
-def call_from_attribute_or_callable_from_attribute(attribute_or_callable, obj,
-                                                   *args, **kwargs):
+def call_from_attribute_or_callable_from_attribute(
+    attribute_or_callable, obj, *args, **kwargs
+):
 
     return getattr(obj, attribute_or_callable)(*args, **kwargs)
 
@@ -153,7 +150,7 @@ def coalesce(*args):
     return args[-1]
 
 
-def find_value(func, args, kwargs, access_key, how='name'):
+def find_value(func, args, kwargs, access_key, how="name"):
     """
     Find a value from a function signature
     """
@@ -162,15 +159,13 @@ def find_value(func, args, kwargs, access_key, how='name'):
     keys = list(parameters.keys())
 
     try:
-        index = keys.index(access_key) if how == 'name' else access_key
+        index = keys.index(access_key) if how == "name" else access_key
         defaults = [
-            i.default for i in parameters.values()
-            if i.default != inspect._empty
+            i.default for i in parameters.values() if i.default != inspect._empty
         ]
         offset = len(keys) - len(coalesce(defaults, []))
         default = defaults[index - offset] if index >= offset else None
-        value = kwargs.get(access_key,
-                           default) if index >= len(args) else args[index]
+        value = kwargs.get(access_key, default) if index >= len(args) else args[index]
     except ValueError:
         value = kwargs.get(access_key, None)
     return value
