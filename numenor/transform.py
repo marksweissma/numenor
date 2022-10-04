@@ -7,8 +7,8 @@ import pandas as pd
 import variants
 from attrs import Factory, define, field
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import RobustScaler, StandardScaler
+from sklearn.impute import SimpleImputer  # type: ignore
+from sklearn.preprocessing import RobustScaler, StandardScaler  # type: ignore
 
 from numenor.utils import as_factory, call_from_attribute_or_callable
 
@@ -18,9 +18,9 @@ class PandasMixin:
         if isinstance(X, pd.DataFrame):
             columns = list(X)
             index = X.index
-        Xt = super().transform(X)
+        Xt = super().transform(X)  # type: ignore
         if isinstance(X, pd.DataFrame):
-            Xt = pd.DataFrame(Xt, index=index, columns=columns)
+            Xt = pd.DataFrame(Xt, index=index, columns=columns)  # type: ignore
         return Xt
 
 
@@ -44,7 +44,7 @@ def select_include_by_key(df, include=None, **kwargs):
 
 
 @select_include.variant("by_dtype")
-def select_include_by_key(df, use_head=True, **kwargs):
+def select_include_by_dtype(df, use_head=True, **kwargs):
     selected = (df.head() if use_head else df).select_dtypes(**kwargs)
     keys = [i for i in df if i in selected]
     return keys
@@ -62,7 +62,7 @@ def select_exclude_by_key(df, exclude, **kwargs):
 
 
 @select_exclude.variant("by_dtype")
-def select_exclude_by_key(df, use_head=True, **kwargs):
+def select_exclude_by_type(df, use_head=True, **kwargs):
     selected = (df.head() if use_head else df).select_dtypes(**kwargs)
     keys = [i for i in df if i not in selected]
     return keys
@@ -98,26 +98,26 @@ class Select:
 
 
 @singledispatch
-def infer_schema(obj):
+def infer_schema(obj, *args, **kwargs):
     raise TypeError(f"obj: {obj} type: {type(obj)} not supported")
 
 
 @infer_schema.register(pd.DataFrame)
-def infer_schema_df(obj):
+def infer_schema_df(obj, *args, **kwargs):
     schema = {}
     [schema.update(infer_schema(obj[column])) for column in obj]
     return schema
 
 
 @infer_schema.register(pd.Series)
-def infer_schema_series(obj):
+def infer_schema_series(obj, *args, **kwargs):
     first_valid_value = obj.loc[obj.first_valid_index()]
     return {obj.name: type(first_valid_value)}
 
 
 @define
 class SchemaSelectMixin:
-    selection: Callable = field(converter=as_factory(Select), default=Factory(dict))
+    selection: Callable = field(converter=as_factory(Select), default=Factory(dict))  # type: ignore
     infer_schema: Callable = infer_schema
 
     def build_schema(self, **kwargs):
@@ -132,11 +132,11 @@ class SchemaSelectMixin:
         payload.update({"y": y}) if y is not None else None
 
         self.build_schema(**payload)
-        return super().fit(X, y=y, **fit_params)
+        return super().fit(X, y=y, **fit_params)  # type: ignore
 
     def transform(self, X):
         X_t = X[self.schema["X"]]
-        return super().transform(X_t)
+        return super().transform(X_t)  # type: ignore
 
 
 @define
@@ -178,7 +178,7 @@ class TimeFeaturesProjectUnitCircle(TransformerMixin, BaseEstimator):
     deltas: List = field()
     unit: str = "1D"
 
-    @deltas.default
+    @deltas.default  # type: ignore
     def default_deltas(self):
         return list(itertools.combinations(self.columns, 2))
 
@@ -211,5 +211,5 @@ class TimeFeaturesProjectUnitCircle(TransformerMixin, BaseEstimator):
 
         for start, stop in self.deltas:
             X[f"{start}__{stop}_delta"] = (X[stop] - X[start]) / pd.Timedelta(self.unit)
-        columns = set(self.columns).union(chain.from_iterable(self.deltas))
+        columns = set(self.columns).union(itertools.chain.from_iterable(self.deltas))
         return X.drop(columns, axis=1)
