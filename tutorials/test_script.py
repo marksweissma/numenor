@@ -26,7 +26,7 @@ def load_sklearn_dataset(handle):
     return X, y
 
 
-def regression_example():
+def test_regression_example():
     X, y = load_sklearn_dataset(datasets.load_diabetes)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=RANDOM_STATE)
 
@@ -36,9 +36,31 @@ def regression_example():
     model.fit(X_train, y_train)
 
     predictions = model.predict(X_test)
-    predictions = model.estimator.predict(X_test)
     response_schema = Schema().fit(predictions)
 
-    import ipdb
+    serve = serving.Serve(model.estimator, feature_converter=lambda x: x)
+    result = serve(X.iloc[[0]])
+    assert isinstance(result.item(), float)
 
-    ipdb.set_trace()
+
+def test_regression_example():
+    X, y = load_sklearn_dataset(datasets.load_iris)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=RANDOM_STATE)
+
+    model = estimate.Trainer(
+        estimator={
+            "executor": make_pipeline(Schema(), RobustScaler(), LogisticRegression())
+        }
+    )
+    model.fit(X_train, y_train)
+
+    predictions = model.predict(X_test)
+    response_schema = Schema().fit(predictions)
+
+    serve = serving.Serve(model.estimator, feature_converter=lambda x: x)
+    result = serve(X.iloc[[0]])
+    assert "prediction" in result
+    assert "probabilities" in result
+    assert isinstance(result["probabilities"], dict)
+    assert isinstance(result["probabilities"][0], float)
+    assert isinstance(result["prediction"], np.integer)
