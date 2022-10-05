@@ -5,6 +5,8 @@ import cloudpickle
 from fastapi import FastAPI
 from pydantic import create_model
 
+from numenor import serving
+
 predictor = FastAPI()
 
 
@@ -23,7 +25,7 @@ Features = create_model(
     "Features",
     **{
         feature: (Optional[_klass], ...)
-        for feature, _klass in PREDICTION_MODEL.schema.items()
+        for feature, _klass in PREDICTION_MODEL.features_schema.items()
     }
 )
 
@@ -31,9 +33,11 @@ Response = create_model(
     "Response",
     **{
         feature: (Optional[_klass], ...)
-        for feature, _klass in PREDICTION_MODEL.response.items()
+        for feature, _klass in PREDICTION_MODEL.response_schema.items()
     }
 )
+
+SERVE = serving.Serve(PREDICTION_MODEL)
 
 
 @predictor.post("/predict_probabilities", response_model=Response)

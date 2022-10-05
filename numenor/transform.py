@@ -115,6 +115,17 @@ def infer_schema_series(obj, *args, **kwargs):
     return {obj.name: type(first_valid_value)}
 
 
+@infer_schema.register(np.ndarray)
+def infer_schema_ndarray(obj, *args, **kwargs):
+    if obj.ndim == 2:
+        schema = {idx: str(obj.dtype) for idx in range(obj.shape[1])}
+    elif obj.ndim == 1:
+        schema = {0: str(obj.dtype)}
+    else:
+        raise ValueError("only 1D and 2D ndarrays supported")
+    return schema
+
+
 @define
 class SchemaSelectMixin:
     selection: Callable = field(converter=as_factory(Select), default=Factory(dict))  # type: ignore
@@ -127,7 +138,11 @@ class SchemaSelectMixin:
 
     def fit(self, X, y=None, **fit_params):
         self.schema = {}
-        X_t = self.selection(X)
+        if isinstance(X, np.ndarray):
+            X_t = X
+        else:
+
+            X_t = self.selection(X)
         payload = {"X": X_t}
         payload.update({"y": y}) if y is not None else None
 
@@ -135,7 +150,10 @@ class SchemaSelectMixin:
         return super().fit(X, y=y, **fit_params)  # type: ignore
 
     def transform(self, X):
-        X_t = X[self.schema["X"]]
+        if isinstance(X, pd.DataFrame):
+            X_t = X[self.schema["X"]]
+        else:
+            X_t = X
         return super().transform(X_t)  # type: ignore
 
 
