@@ -3,13 +3,17 @@ from functools import cached_property
 from hashlib import md5
 from typing import *
 
+import numpy as np
+import pandas as pd
 import variants
 from attr import Factory, define, field
+from pydantic import BaseModel, create_model
 from sklearn import model_selection
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.pipeline import Pipeline
 from wrapt import decorator
 
+from numenor.transform import Schema
 from numenor.utils import (as_factory, call_from_attribute_or_callable,
                            find_value, replace_value)
 
@@ -42,7 +46,7 @@ def fit(
     param_grid=None,
     search_kwargs=None,
     fit_params=None,
-    **kwargs
+    **kwargs,
 ):
     variant = variant if variant else "base"
     return getattr(fit, variant)(
@@ -51,7 +55,7 @@ def fit(
         param_grid=param_grid,
         search_kwargs=search_kwargs,
         fit_params=fit_params,
-        **kwargs
+        **kwargs,
     )
 
 
@@ -134,10 +138,60 @@ class Estimator(SKAttributeTransformerMixin, BaseTransformer):
             response = "predict"
         return response
 
-    response_schema: Dict[str, type] = field(init=False, factory=dict)
-    feature_schema: Dict[str, type] = field(init=False, factory=dict)
+    feature_schema: Optional[Dict[str, str]] = None
+    response_schema: Optional[Dict[str, str] | Dict[str, Dict[str, str]]] = None
 
-    def __call__(self, X):
+    def infer_feature_schema(self, X):
+        transformer = self.attribute
+        while isinstance(transformer, Pipeline):
+            transformer = transformer[0]
+        schema = (
+            transformer.schema
+            if hasattr(transformer, "schema")
+            else Schema().fit(X).schema
+        )
+        features = schema.get("X", {})
+
+        if features:
+            self.feature_schema = features
+
+    def infer_response_schema(self, X: np.ndarray | pd.DataFrame):
+        prediction = self.respond(X[:10])
+
+        transformer = self.attribute
+        while isinstance(transformer, Pipeline):
+            transformer = transformer[-1]
+
+        if prediction.ndim < 1:
+            return None
+
+        response_type = str(prediction.dtype)
+        if prediction.ndim == 1 or (prediction.ndim == 2 and prediction.shape[1] == 1):
+            schema = {"prediction": response_type}
+        else:
+            has_classes = hasattr(transformer, "classes_")
+            names: List = (
+                list(transformer.classes_)
+                if has_classes
+                else list(range(prediction.shape[1]))
+            )
+            keys: List[str] = [
+                str(i) if has_classes else f"prediction_{i}" for i in names
+            ]
+            schema = {"prediction": {key: response_type for key in keys}}
+        self.response_schema = schema
+
+    def infer_schemas(self, X):
+        self.infer_feature_schema(X)
+        self.infer_response_schema(X)
+
+    def fit(self, *args, infer_schemas=True, **kwargs):
+        super().fit(*args, **kwargs)
+        if infer_schemas:
+            X = kwargs.get("X", args[0] if args else None)
+            self.infer_schemas(X)
+
+    def respond(self, X):
         return call_from_attribute_or_callable(self.response, self.executor, X)
 
 
@@ -170,7 +224,7 @@ class Trainer(SKAttributeTransformerMixin, BaseTransformer):
         param_grid_updates=None,
         search_kwarg_updates=None,
         fit_variant=None,
-        **fit_params
+        **fit_params,
     ):
         if data is not None:
             raise ValueError("data should be converted, to (X, y)")
@@ -186,6 +240,6 @@ class Trainer(SKAttributeTransformerMixin, BaseTransformer):
             y,
             param_grid=param_grid,
             search_kwargs=search_kwargs,
-            **fit_params
+            **fit_params,
         )
         return self
