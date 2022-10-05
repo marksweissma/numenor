@@ -1,6 +1,6 @@
 import pytest
 
-from numenor_examples import without_config
+from tutorials import without_config
 
 
 @pytest.mark.example
