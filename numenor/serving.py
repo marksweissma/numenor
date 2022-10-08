@@ -1,6 +1,8 @@
 from functools import singledispatch
+from numbers import Number
 from typing import *
 
+import numpy as np
 import pandas as pd
 import variants
 from attrs import define
@@ -37,20 +39,22 @@ def package_prediction_one_dimensional(model: BaseEstimator, prediction: ArrayLi
 
 @package_prediction.variant("two_dimensional")
 @singledispatch
-def package_prediction_two_dimensional(model: BaseEstimator, prediction: ArrayLike):
+def package_prediction_two_dimensional(model: BaseEstimator, prediction: np.ndarray):
     while isinstance(model, Pipeline):
-        model = model[-1]
+        model = model[-1]  # type: ignore
     if hasattr(model, "classes_"):
         keys = model.classes_  # type: ignore
-        probabilities = {class_: prediction[0, idx] for idx, class_ in enumerate(keys)}  # type: ignore
-        prediction = keys[prediction[0, :].argmax()]  # type: ignore
-        payload = {
+        probabilities: Dict[str, Number] = {class_: prediction[0, idx] for idx, class_ in enumerate(keys)}  # type: ignore
+        predicted_class: str = keys[prediction[0, :].argmax()]  # type: ignore
+        payload: Dict[str, Dict[str, Number] | str] = {
             "probabilities": probabilities,
-            "prediction": prediction,
+            "predicted_class": predicted_class,
         }
     else:
-        payload = {
-            "prediction": {idx: value for idx, value in enumerate(prediction[0, :])}
+        payload: Dict[str, Dict[str, Number] | str] = {
+            "prediction": {
+                str(idx): value for idx, value in enumerate(prediction[0, :])
+            }
         }
     return payload
 
@@ -66,13 +70,18 @@ class Serve:
     response: Callable = package_prediction
     response_variant: str = "infer"
 
+    def set_estimator(self, estimator: Estimator):
+        self.estimator = estimator
+
     def __call__(self, request_model, *args, **kwargs):
         features = self.feature_converter(request_model)
         prediction = self.estimator.respond(features)
-        return self.response(
+        response = self.response(
             self.response_variant,
             model=getattr(self.estimator, "attribute", self.estimator),
             prediction=prediction,
             *args,
             **kwargs
         )
+        response.update(kwargs)
+        return response

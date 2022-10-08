@@ -1,45 +1,108 @@
 import os
-from typing import Optional
+from typing import Dict, Optional, Type
 
 import cloudpickle
-from fastapi import FastAPI
-from pydantic import create_model
+import structlog
+from attrs import Factory, define
+from fastapi import FastAPI, status
+from pydantic import BaseModel, create_model
 
-from numenor import serving
+from numenor.estimate import Estimator
+from numenor.serving import Serve
+
+LOG = structlog.get_logger()
 
 predictor = FastAPI()
 
 
-def load_prediction_model(location: Optional[str]):
-    if location is None:
-        raise ValueError("no default location for model available")
+@define
+class ServingHook:
+    serve: Serve
+    feature_model: Type[BaseModel]
+    response_model: Type[BaseModel]
+    response_extras: Dict[str, Type] = Factory(dict)
 
-    with open(location, "rb") as f:
-        prediction_model = cloudpickle.load(f)
-    return prediction_model
+    @staticmethod
+    def create_nullable_value_model(schema: Dict[str, Type], name: str, **extras):
+        model: Type[BaseModel] = create_model(
+            name,
+            **{
+                **{
+                    feature: (Optional[_klass], ...)
+                    for feature, _klass in schema.items()
+                },
+                **extras,
+            },
+        )
+        return model
+
+    @staticmethod
+    def load_estimator_from_location(location: Optional[str] = None):
+
+        defaulted_location = location if location else os.getenv("model_path")
+        assert defaulted_location, "no provided default location for model available"
+
+        with open(defaulted_location, "rb") as estimator_location:
+            estimator: Estimator = cloudpickle.load(estimator_location)
+        return estimator
+
+    @classmethod
+    def from_location(cls, location: Optional[str] = None, **response_extras):
+        estimator = cls.load_estimator_from_location(location)
+
+        assert estimator.feature_schema, "estimator has no feature schema"
+        assert estimator.response_schema, "estimator has no response schema"
+
+        feature_model = cls.create_nullable_value_model(
+            estimator.feature_schema, "Features"
+        )
+        response_model = cls.create_nullable_value_model(
+            estimator.response_schema, "Response", **response_extras
+        )
+        return cls(Serve(estimator), feature_model, response_model, response_extras)
+
+    def update_estimator(self, estimator: Estimator):
+        try:
+            assert estimator.feature_schema, "estimator has no feature schema"
+            assert estimator.response_schema, "estimator has no response schema"
+            feature_model = self.create_nullable_value_model(
+                estimator.feature_schema, "Features"
+            )
+            response_model = self.create_nullable_value_model(
+                estimator.response_schema, "Response", **self.response_extras
+            )
+            assert feature_model == self.feature_model
+            assert response_model == self.response_model
+            self.serve.set_estimator(estimator)
+            success: bool = True
+
+        except Exception as e:
+            success: bool = False
+
+        return success
 
 
-PREDICTION_MODEL = load_prediction_model(location=os.getenv("model_path"))
+Predictor = ServingHook.from_location(id=int)
 
-Features = create_model(
-    "Features",
-    **{
-        feature: (Optional[_klass], ...)
-        for feature, _klass in PREDICTION_MODEL.features_schema.items()
-    }
+
+@predictor.post("/predict", response_model=Predictor.response_model)
+async def predict(
+    features: Predictor.feature_model, id: Optional[int] = None, **kwargs  # type: ignore
+):
+    response = Predictor.serve(features, id=id)
+
+
+@predictor.post(
+    "/update_estimator",
+    status_code=status.HTTP_202_ACCEPTED | status.HTTP_406_NOT_ACCEPTABLE,
 )
+async def update_estimator(location: Optional[str]):
+    try:
+        estimator = ServingHook.load_estimator_from_location(location)
+        response = status.HTTP_202_ACCEPTED
 
-Response = create_model(
-    "Response",
-    **{
-        feature: (Optional[_klass], ...)
-        for feature, _klass in PREDICTION_MODEL.response_schema.items()
-    }
-)
+    except Exception as e:
+        LOG.failure(f"failed to load estimator")
+        response = status.HTTP_406_NOT_ACCEPTABLE
 
-SERVE = serving.Serve(PREDICTION_MODEL)
-
-
-@predictor.post("/predict_probabilities", response_model=Response)
-async def predict(id: int, features: Features, **kwargs):
-    return PREDICTION_MODEL.serve(features, id=id)
+    return response

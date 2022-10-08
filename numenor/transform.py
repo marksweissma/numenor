@@ -118,9 +118,9 @@ def infer_schema_series(obj, *args, **kwargs):
 @infer_schema.register(np.ndarray)
 def infer_schema_ndarray(obj, *args, **kwargs):
     if obj.ndim == 2:
-        schema = {idx: str(obj.dtype) for idx in range(obj.shape[1])}
+        schema = {idx: str(obj.dtype.type) for idx in range(obj.shape[1])}
     elif obj.ndim == 1:
-        schema = {0: str(obj.dtype)}
+        schema = {0: str(obj.dtype.type)}
     else:
         raise ValueError("only 1D and 2D ndarrays supported")
     return schema
