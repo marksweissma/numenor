@@ -130,6 +130,7 @@ class Estimator(SKAttributeTransformerMixin, BaseTransformer):
     @response.default
     def response_default(self):
         model = self.executor
+        response: str | Callable = "transform"
         while isinstance(model, Pipeline):
             model = model[-1]  # type: ignore
         if isinstance(model, ClassifierMixin):
@@ -165,7 +166,7 @@ class Estimator(SKAttributeTransformerMixin, BaseTransformer):
         if prediction.ndim < 1:
             return None
 
-        response_type = str(prediction.dtype)
+        response_type = prediction.dtype.type
         if prediction.ndim == 1 or (prediction.ndim == 2 and prediction.shape[1] == 1):
             schema = {"prediction": response_type}
         else:

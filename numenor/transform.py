@@ -32,6 +32,18 @@ class BaseTransformer(TransformerMixin, BaseEstimator):
         return X
 
 
+class BaseTransformerNumpy(TransformerMixin, BaseEstimator):
+    def fit(self, X, y=None, **fit_params):
+        if hasattr(X, "columns"):
+            self.classes_ = list(X.columns)
+        return self
+
+    def transform(self, X):
+        if not isinstance(X, np.ndarray):
+            X = np.array(X)
+        return X
+
+
 @variants.primary
 def select_include(variant, df, **kwargs):
     return getattr(select_include, variant)(df, **kwargs)
@@ -118,9 +130,9 @@ def infer_schema_series(obj, *args, **kwargs):
 @infer_schema.register(np.ndarray)
 def infer_schema_ndarray(obj, *args, **kwargs):
     if obj.ndim == 2:
-        schema = {idx: str(obj.dtype) for idx in range(obj.shape[1])}
+        schema = {idx: str(obj.dtype.type) for idx in range(obj.shape[1])}
     elif obj.ndim == 1:
-        schema = {0: str(obj.dtype)}
+        schema = {0: str(obj.dtype.type)}
     else:
         raise ValueError("only 1D and 2D ndarrays supported")
     return schema
