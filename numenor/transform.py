@@ -32,6 +32,18 @@ class BaseTransformer(TransformerMixin, BaseEstimator):
         return X
 
 
+class BaseTransformerNumpy(TransformerMixin, BaseEstimator):
+    def fit(self, X, y=None, **fit_params):
+        if hasattr(X, "columns"):
+            self.classes_ = list(X.columns)
+        return self
+
+    def transform(self, X):
+        if not isinstance(X, np.ndarray):
+            X = np.array(X)
+        return X
+
+
 @variants.primary
 def select_include(variant, df, **kwargs):
     return getattr(select_include, variant)(df, **kwargs)

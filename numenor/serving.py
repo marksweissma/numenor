@@ -59,8 +59,8 @@ def package_prediction_two_dimensional(model: BaseEstimator, prediction: np.ndar
     return payload
 
 
-def pydantic_to_pandas_feature_converter(features: BaseModel):
-    return pd.DataFrame.from_dict(features.dict(), orient="index")
+def pydantic_to_pandas_feature_converter(features: Dict[str, str | Number]):
+    return pd.DataFrame.from_dict(features, orient="index").T
 
 
 @define
