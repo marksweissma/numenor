@@ -203,6 +203,7 @@ class Trainer(SKAttributeTransformerMixin, BaseTransformer):
     fit_variant: Optional[Union[str, Callable]] = None
     param_grid: Dict[str, Any] = Factory(dict)
     search_kwargs: Dict[str, Any] = Factory(dict)
+    fit_params: Dict = Factory(dict)
 
     id: str = Factory(lambda: md5().hexdigest())
 
@@ -225,7 +226,7 @@ class Trainer(SKAttributeTransformerMixin, BaseTransformer):
         param_grid_updates=None,
         search_kwarg_updates=None,
         fit_variant=None,
-        **fit_params,
+        **fit_param_updates,
     ):
         if data is not None:
             raise ValueError("data should be converted, to (X, y)")
@@ -234,6 +235,7 @@ class Trainer(SKAttributeTransformerMixin, BaseTransformer):
         )
 
         fit_variant = fit_variant if fit_variant else self.fit_variant
+        fit_params = {**self.fit_params, **fit_param_updates}
         fit(
             self.fit_variant,
             self.estimator,
@@ -241,6 +243,6 @@ class Trainer(SKAttributeTransformerMixin, BaseTransformer):
             y,
             param_grid=param_grid,
             search_kwargs=search_kwargs,
-            **fit_params,
+            fit_params=fit_params,
         )
         return self

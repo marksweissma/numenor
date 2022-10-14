@@ -410,15 +410,26 @@ class Dataset:
     datas: List[Data] = field(converter=dataset_enforcer)
     splitter: Split = field(converter=as_factory(Split), default=Factory(Split))
     children: Sequence = Factory(list)
-    anchor_data_key: Union[int, str] = None
+    anchor_data_key: Optional[int | str] = None
 
     @classmethod
     def from_datas(cls, datas, **kwargs):
         return cls(datas, **kwargs)
 
     @classmethod
-    def from_method(cls, method="from_components", **kwargs):
-        return cls(getattr(Data, method)(**kwargs))
+    def from_method(
+        cls,
+        method="from_components",
+        splitter: Optional[Split] = None,
+        children: Optional[Sequence] = None,
+        anchor_data_key: Optional[int | str] = None,
+        **data_kwargs,
+    ):
+        splitter = splitter if splitter else Split()
+        children = children if children else []
+        return cls(
+            getattr(Data, method)(**data_kwargs), splitter, children, anchor_data_key
+        )
 
     def _build_children_split_confs(self):
         heads = self.children[0]
@@ -534,3 +545,16 @@ class Dataset:
 
     def __len__(self):
         return len(self.reduce().table)
+
+    def __getitem__(self, key):
+        if key == 0:
+            value = self.features
+        elif key == 1:
+            value = self.target
+        else:
+            raise KeyError(f"Key map only supported for (0, 1) not {key}")
+        return value
+
+    def __iter__(self):
+        for _attribute in ["features", "target"]:
+            yield getattr(self, _attribute)
