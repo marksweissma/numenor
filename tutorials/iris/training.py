@@ -48,7 +48,12 @@ def get_fit_params(pipeline, params, validation_dataset: List[Tuple[ArrayLike]])
 def get_pipeline():
     return p.make_pipeline(
         SimpleImputer(),
-        XGBClassifier(n_estimators=10000, max_depth=4, eval_metric="mlogloss"),
+        XGBClassifier(
+            n_estimators=200,
+            max_depth=3,
+            eval_metric="mlogloss",
+            early_stopping_rounds=20,
+        ),
     )
 
 
@@ -60,19 +65,28 @@ def get_trainer(validation_dataset):
     pipeline = get_pipeline()
     fit_params = get_fit_params(
         pipeline,
-        {"early_stopping_rounds": 20},
+        {},
         validation_dataset,
     )
     return e.Trainer(estimator=get_estimator(pipeline), fit_params=fit_params)
 
 
-def main():
-    dataset = load_dataset()
-    train_dataset, evaluation_dataset = dataset.split()
-    fitting_dataset, validation_dataset = train_dataset.split()
+def train(dataset: d.Dataset):
+    fitting_dataset, validation_dataset = dataset.split()
 
     trainer = get_trainer(validation_dataset)
-    trainer.fit(data=train_dataset)
+    trainer.fit(data=fitting_dataset)
+
+
+def evaluate(trainer: e.Trainer, dataset: d.Dataset):
+    ...
+
+
+def main():
+    dataset = load_dataset()
+
+    train_dataset, evaluation_dataset = dataset.split()
+    train(train_dataset)
 
 
 if __name__ == "__main__":
