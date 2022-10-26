@@ -2,6 +2,7 @@ from functools import lru_cache, singledispatch
 
 import numpy as np
 import pandas as pd
+import variants
 from sklearn import datasets
 from sklearn.cluster import KMeans
 from sklearn.linear_model import Lasso, LogisticRegression
@@ -26,7 +27,13 @@ def load_sklearn_dataset(handle):
     return X, y
 
 
-def test_regression_example():
+@variants.primary
+def test_end_to_end(*args, **kwargs):
+    ...
+
+
+@test_end_to_end.variant("regression")
+def test_end_to_end_regression():
     X, y = load_sklearn_dataset(datasets.load_diabetes)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=RANDOM_STATE)
 
@@ -43,7 +50,8 @@ def test_regression_example():
     assert isinstance(result.item(), float)
 
 
-def test_regression_example():
+@test_end_to_end.variant("classification")
+def test_end_to_end_classification():
     X, y = load_sklearn_dataset(datasets.load_iris)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=RANDOM_STATE)
 
